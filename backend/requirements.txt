@@ -1,0 +1,15 @@
+fastapi
+uvicorn[standard]
+sqlalchemy
+psycopg2-binary
+httpx
+groq
+yfinance
+apscheduler
+python-dotenv
+pycoingecko
+tweepy
+finnhub-python
+newsapi-python
+pydantic-settings
+pytz

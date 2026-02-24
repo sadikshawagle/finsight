@@ -1,0 +1,10 @@
+[
+  {"handle": "elonmusk",       "twitter_id": "44196397",   "credibility": 0.75, "tier": "A"},
+  {"handle": "CathieDWood",    "twitter_id": "2362765706", "credibility": 0.80, "tier": "A"},
+  {"handle": "michaelsaylor",  "twitter_id": "244647486",  "credibility": 0.77, "tier": "A"},
+  {"handle": "chamath",        "twitter_id": "31813787",   "credibility": 0.78, "tier": "A"},
+  {"handle": "RaoulGMI",       "twitter_id": "359831572",  "credibility": 0.82, "tier": "A"},
+  {"handle": "APompliano",     "twitter_id": "960386844",  "credibility": 0.73, "tier": "B"},
+  {"handle": "TimmerFidelity", "twitter_id": "429804821",  "credibility": 0.85, "tier": "B"},
+  {"handle": "BillAckman",     "twitter_id": "6948032",    "credibility": 0.83, "tier": "B"}
+]

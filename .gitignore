@@ -1,0 +1,18 @@
+# Environment — NEVER commit these (secrets)
+.env
+backend/.env
+frontend/.env.local
+
+# Python
+backend/venv/
+backend/__pycache__/
+backend/**/__pycache__/
+backend/*.pyc
+backend/finsight.db
+
+# Node
+frontend/node_modules/
+frontend/.next/
+
+# OS
+.DS_Store
