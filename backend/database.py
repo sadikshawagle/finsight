@@ -35,6 +35,7 @@ class Signal(Base):
     summary        = Column(Text, nullable=False)
     reasoning      = Column(Text, nullable=False)
     signal_logic   = Column(Text, nullable=True)   # "cut losses — more downside" / "take profits" / "buy the dip" etc.
+    pump_dump_risk = Column(Text, nullable=True, default="LOW")  # LOW / MEDIUM / HIGH
     is_twitter     = Column(Boolean, default=False)
     twitter_handle = Column(Text, nullable=True)
     is_active      = Column(Boolean, default=True)

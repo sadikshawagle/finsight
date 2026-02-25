@@ -137,6 +137,17 @@ function SignalCard({ item, isNew }) {
             {(item.tickers || []).length > 2 && (
               <span style={{ fontSize: 10, color: "#6b7280" }}>+{item.tickers.length - 2} more</span>
             )}
+            {/* Pump & dump risk badge — only show MEDIUM or HIGH */}
+            {item.pump_dump_risk === "HIGH" && (
+              <span style={{ fontSize: 10, background: "rgba(248,113,113,0.12)", border: "1px solid rgba(248,113,113,0.35)", color: "#f87171", padding: "2px 7px", borderRadius: 4, fontFamily: "monospace", fontWeight: 700 }}>
+                ⚠ HYPE RISK
+              </span>
+            )}
+            {item.pump_dump_risk === "MEDIUM" && (
+              <span style={{ fontSize: 10, background: "rgba(251,191,36,0.1)", border: "1px solid rgba(251,191,36,0.3)", color: "#fbbf24", padding: "2px 7px", borderRadius: 4, fontFamily: "monospace", fontWeight: 700 }}>
+                ⚡ UNVERIFIED
+              </span>
+            )}
           </div>
           <div style={{ fontSize: 13, fontWeight: 600, color: "#e6edf3", lineHeight: 1.4, marginBottom: 5 }}>{item.title}</div>
           <div style={{ fontSize: 12, color: "#8b949e", lineHeight: 1.5 }}>{item.summary}</div>

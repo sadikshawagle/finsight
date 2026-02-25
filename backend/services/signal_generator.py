@@ -176,6 +176,7 @@ def process_new_articles() -> int:
                 summary        = result.get("summary", ""),
                 reasoning      = result.get("reasoning", ""),
                 signal_logic   = result.get("signal_logic", ""),
+                pump_dump_risk = result.get("pump_dump_risk", "LOW").upper(),
                 is_twitter     = article.get("is_twitter", False),
                 twitter_handle = article.get("twitter_handle"),
             )

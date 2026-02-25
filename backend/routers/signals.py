@@ -59,6 +59,7 @@ def get_signals(
             "summary":        s.summary,
             "reasoning":      s.reasoning,
             "signal_logic":   s.signal_logic or "",
+            "pump_dump_risk": s.pump_dump_risk or "LOW",
             "is_twitter":     s.is_twitter,
             "twitter_handle": s.twitter_handle,
         })
