@@ -6,6 +6,22 @@ import { useWatchlist } from "@/hooks/useWatchlist";
 import { useMarkets }   from "@/hooks/useMarkets";
 import { useChartData } from "@/hooks/useChartData";
 
+// ─── AFFILIATE BROKERS ────────────────────────────────────────────────────────
+// TODO: Replace href values with your personal affiliate URLs after signing up
+// Stake affiliate: partners.stake.com.au
+// eToro affiliate: etoro.com/partners
+// Swyftx affiliate: swyftx.com/affiliates
+// CoinSpot referral: coinspot.com.au (referral in account settings)
+// SelfWealth affiliate: selfwealth.com.au/affiliates
+const BROKERS = [
+  { name: "Stake",            tag: "ASX + US",   badge: "#58a6ff", href: "https://stake.com.au",        desc: "Stocks & ETFs" },
+  { name: "SelfWealth",       tag: "ASX",        badge: "#4ade80", href: "https://selfwealth.com.au",   desc: "Flat-fee ASX trading" },
+  { name: "eToro",            tag: "US + Crypto", badge: "#fbbf24", href: "https://etoro.com",          desc: "Social trading platform" },
+  { name: "Swyftx",           tag: "Crypto",     badge: "#a78bfa", href: "https://swyftx.com",          desc: "Australian crypto exchange" },
+  { name: "CoinSpot",         tag: "Crypto",     badge: "#a78bfa", href: "https://coinspot.com.au",     desc: "Buy 300+ coins in AUD" },
+  { name: "Interactive Brokers", tag: "US + ASX", badge: "#f87171", href: "https://interactivebrokers.com.au", desc: "Pro-grade trading" },
+];
+
 // ─── SIGNAL CONFIG ────────────────────────────────────────────────────────────
 
 const SIGNAL_CONFIG = {
@@ -497,6 +513,79 @@ export default function FinSight() {
             <div style={{ fontSize: 9, color: "#4b5563", lineHeight: 1.6 }}>
               ⚠ FinSight is an automation tool for informational purposes only. Signals do not constitute financial advice. Past signals do not guarantee future results. Always do your own research.
             </div>
+          </div>
+
+          {/* Automation business CTA */}
+          <div style={{
+            background: "linear-gradient(135deg, rgba(167,139,250,0.08), rgba(88,166,255,0.08))",
+            border: "1px solid rgba(167,139,250,0.25)", borderRadius: 12, padding: 16,
+          }}>
+            <div style={{ fontSize: 10, color: "#a78bfa", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 8, fontWeight: 700 }}>
+              ⚙ Want Custom Automation?
+            </div>
+            <div style={{ fontSize: 11, color: "#8b949e", lineHeight: 1.6, marginBottom: 12 }}>
+              Get real-time stock alerts, portfolio monitoring, and custom trading notifications delivered straight to your email or phone — built around your exact investments.
+            </div>
+            <a
+              href="mailto:hello@saramsaautomation.com.au?subject=Stock Automation Inquiry from FinSight"
+              style={{
+                display: "block", textAlign: "center", textDecoration: "none",
+                background: "rgba(167,139,250,0.15)", border: "1px solid rgba(167,139,250,0.35)",
+                color: "#a78bfa", padding: "8px 0", borderRadius: 7, fontSize: 11, fontWeight: 700,
+              }}
+            >
+              Contact Us →
+            </a>
+            <div style={{ fontSize: 9, color: "#4b5563", textAlign: "center", marginTop: 6 }}>
+              hello@saramsaautomation.com.au
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Broker affiliate section ── */}
+      <div style={{ borderTop: "1px solid #1f2937", padding: "20px 24px 8px" }}>
+        <div style={{ maxWidth: 1200, margin: "0 auto" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
+            <span style={{ fontSize: 10, color: "#4b5563", textTransform: "uppercase", letterSpacing: "0.1em" }}>
+              Open a trading account
+            </span>
+            <div style={{ flex: 1, height: 1, background: "#1f2937" }} />
+            <span style={{ fontSize: 9, color: "#374151" }}>FinSight may earn a referral fee</span>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(170px, 1fr))", gap: 8 }}>
+            {BROKERS.map(b => (
+              <a key={b.name} href={b.href} target="_blank" rel="noopener noreferrer" style={{ textDecoration: "none" }}>
+                <div style={{
+                  background: "#0d1117", border: "1px solid #1f2937", borderRadius: 8,
+                  padding: "10px 12px", transition: "border-color 0.2s", cursor: "pointer",
+                  display: "flex", flexDirection: "column", gap: 4,
+                }}
+                  onMouseEnter={e => e.currentTarget.style.borderColor = "#30363d"}
+                  onMouseLeave={e => e.currentTarget.style.borderColor = "#1f2937"}
+                >
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: "#e6edf3" }}>{b.name}</span>
+                    <span style={{ fontSize: 9, background: `${b.badge}18`, border: `1px solid ${b.badge}40`, color: b.badge, padding: "1px 5px", borderRadius: 3, fontFamily: "monospace" }}>{b.tag}</span>
+                  </div>
+                  <span style={{ fontSize: 10, color: "#6b7280" }}>{b.desc}</span>
+                  <span style={{ fontSize: 10, color: "#4ade80", marginTop: 2 }}>Open account →</span>
+                </div>
+              </a>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* ── Full-width disclaimer footer ── */}
+      <div style={{ borderTop: "1px solid #1f2937", padding: "16px 24px", marginTop: 8 }}>
+        <div style={{ maxWidth: 1200, margin: "0 auto", textAlign: "center" }}>
+          <div style={{ fontSize: 10, color: "#374151", lineHeight: 1.7 }}>
+            <span style={{ color: "#4b5563", fontWeight: 700 }}>⚠ DISCLAIMER:</span>{" "}
+            FinSight is an informational tool only. All signals are generated by AI analysis of publicly available news and do not constitute financial advice, investment recommendations, or solicitation to buy or sell any security. Past signal performance does not guarantee future results. FinSight is not an Australian Financial Services (AFSL) licensee. Always conduct your own research and consult a licensed financial adviser before making investment decisions.
+          </div>
+          <div style={{ fontSize: 9, color: "#1f2937", marginTop: 8 }}>
+            © {new Date().getFullYear()} FinSight · Powered by Groq AI · Built by Saramsa Automation
           </div>
         </div>
       </div>
