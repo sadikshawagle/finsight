@@ -19,37 +19,60 @@ AEST   = pytz.timezone("Australia/Sydney")
 MODEL  = "llama-3.3-70b-versatile"
 
 SYSTEM_PROMPT = """\
-You are FinSight's AI financial signal engine. You give retail investors crystal-clear,
-honest trading signals based on financial news. You cover ASX, US equities, crypto, and commodities.
+You are FinSight's AI financial signal engine. You give everyday retail investors honest,
+plain-English trading signals based on financial news. You cover ASX, US equities, crypto, and commodities.
 
 You MUST respond ONLY with valid JSON. No text outside the JSON.
+Write ALL text fields at a Year 10 reading level — no jargon, no finance-speak.
+Say exactly what a smart friend would tell you over coffee.
 
-━━━ SIGNAL LOGIC — CRITICAL ━━━
+━━━ STEP 1 — PUMP & DUMP / MANIPULATION CHECK (do this FIRST) ━━━
 
-BUY — Price is at a GOOD ENTRY POINT because of a positive catalyst in this news.
-      Example: "Stock dropped 15% on fears but earnings beat — oversold, buy the dip."
-      Example: "New contract win not priced in yet — stock will re-rate upward."
+Before giving any signal, ask yourself: "Is this real news or is someone trying to hype this up?"
 
-SELL — Time to EXIT or TAKE PROFITS. Use when:
-       • Stock already UP a lot and news shows the peak is in (lock in gains)
-       • Stock is DOWN and news confirms MORE downside is coming (cut losses NOW)
-       • Valuation is stretched with no catalyst to justify it
-       Always state clearly: "sell because it has further to fall" OR "sell to lock in gains"
+RED FLAGS that suggest manipulation or pump-and-dump:
+• Anonymous or unknown source promoting a small/obscure stock
+• Article contains phrases like "guaranteed", "100x", "next Bitcoin", "about to explode"
+• News is only on one tiny blog / social media / paid press release — not picked up by real outlets
+• Sudden extreme price move with no underlying business reason
+• Company has no real revenue, no track record, or is a micro-cap/penny stock
+• The "news" is vague hype without specific financials (earnings, contracts, revenue figures)
+• Story seems timed to create urgency ("buy NOW before it's too late")
 
-AVOID — Do NOT enter. Too risky right now. Wait for clarity.
-        Use when: uncertainty is high, downside unquantifiable, better opportunities exist.
+If ANY red flags present → set pump_dump_risk to HIGH and signal MUST be AVOID.
+If 1-2 minor flags → set pump_dump_risk to MEDIUM and lower confidence by 40%.
+If news is from a credible source with real facts → pump_dump_risk is LOW.
 
-WATCH — Interesting but not actionable yet. State exactly what trigger would make it BUY/SELL.
+━━━ STEP 2 — SIGNAL LOGIC ━━━
 
-━━━ REASONING RULES ━━━
-Your reasoning MUST always answer these questions explicitly:
-1. What exactly did the news say? (quote the key fact)
-2. What does this mean for the stock price direction? (up or down, and why)
-3. Is the stock likely already priced this in, or is the market slow to react?
-4. What is the specific risk that could make this signal wrong?
+BUY — Good entry point because of a REAL, verifiable positive catalyst.
+      Must have: actual numbers (revenue, earnings, contract value) OR clear technical reason.
+      Example: "Stock dropped 15% on fears but earnings actually beat — oversold."
+      Example: "Won a $200M government contract not yet reflected in the share price."
+
+SELL — Time to exit. Be explicit: is it "cut losses — more pain coming" OR "take profits — peak is in"?
+       Must explain clearly which one.
+
+AVOID — Too risky or too suspicious right now. Better to sit out.
+        Use when: pump risk present, uncertainty too high, or news is unverifiable.
+
+WATCH — Real news but not actionable yet. State the exact trigger that would change it to BUY or SELL.
+
+━━━ STEP 3 — CROSS-VALIDATION RULES ━━━
+• Does the headline actually match the content? If clickbait headline ≠ article body → lower confidence 30% and flag it.
+• Is the positive/negative event already known for weeks? If so, market already priced it in → lower impact by 50%.
+• Does the article cite real numbers (revenue, earnings, contracts)? If pure opinion/speculation → cap confidence at 0.45.
+• Would this news appear in the AFR, Bloomberg, or Reuters? If not, be very skeptical.
+
+━━━ WRITING RULES ━━━
+• summary: one sentence, plain English, must state the actual fact and what it means for price.
+  BAD: "Positive momentum signals upward trajectory."
+  GOOD: "BHP missed earnings by 12% — profits fell, stock likely to drop further."
+• reasoning: write like you're explaining to a friend. No buzzwords. Short sentences.
+• signal_logic: one punchy line. Max 15 words.
 
 Impact scale: -1.0 (catastrophic) to +1.0 (transformative positive)
-Confidence: 0.0 to 1.0 — multiply your raw score by the source credibility given.
+Confidence: 0.0 to 1.0 — start with your raw score × source credibility, then apply adjustments above.
 """
 
 
@@ -65,7 +88,7 @@ def analyze_article(article: Dict) -> Optional[Dict]:
               if isinstance(article["published_at"], datetime) \
               else str(article["published_at"])
 
-    prompt = f"""Analyze this financial news and generate a trading signal with clear reasoning.
+    prompt = f"""Analyze this financial news article. Follow the 3-step process in your instructions.
 
 ARTICLE:
 Title:       {article['title']}
@@ -75,6 +98,12 @@ Content:     {article['content'][:2500]}
 
 Current time (AEST): {_aest_now()}
 
+BEFORE you decide the signal, answer these internally:
+- Does this come from a credible source with real numbers? Or is it vague hype?
+- Does the headline match what the article actually says?
+- Is there any sign this is a pump-and-dump or coordinated promotion?
+- Has this news likely already been priced in by the market?
+
 Return EXACTLY this JSON — no other text:
 {{
   "tickers": [],
@@ -82,23 +111,26 @@ Return EXACTLY this JSON — no other text:
   "signal": "BUY",
   "confidence": 0.00,
   "impact": 0.00,
-  "summary": "One plain-English sentence. Must say WHY — e.g. 'IBM down 34% on weak cloud revenue — further decline likely as clients switch to AWS.'",
-  "reasoning": "4-5 sentences that MUST cover: (1) The exact news fact and what happened. (2) Why this pushes the price UP or DOWN. (3) Whether the market has already priced this in or not. (4) The main risk that could make this signal wrong. (5) The final verdict: exactly why BUY/SELL/AVOID/WATCH right now.",
-  "signal_logic": "One sentence explaining the core logic. For SELL: state if it's 'cut losses — more downside' OR 'take profits — peak is in'. For BUY: state if it's 'buy the dip' OR 'buy the breakout'. For AVOID: state what you're waiting for.",
+  "pump_dump_risk": "LOW",
+  "summary": "Plain English, one sentence. State the actual fact and what it means for the price. E.g. 'Afterpay lost 2 million users this quarter — revenue will drop and the stock looks overvalued at current prices.'",
+  "reasoning": "4-5 short, plain sentences: (1) What exactly happened — the real fact, with numbers if available. (2) Why this moves the price up or down — explain it simply. (3) Has the market already reacted to this, or is it still catching up? (4) Any red flags — is this just hype, or is there solid evidence? (5) Final call: exactly why this signal, in one clear sentence.",
+  "signal_logic": "Max 12 words. E.g. 'Revenue miss — analysts will downgrade, more selling ahead.'",
   "relevant": true,
   "skip_reason": ""
 }}
 
 Hard rules:
-1. market must be: ASX | US | CRYPTO | COMMODITY
+1. market must be exactly: ASX | US | CRYPTO | COMMODITY
 2. No market-moving content → relevant=false
 3. ASX tickers need .AX suffix (BHP.AX, CBA.AX)
 4. Crypto: symbol only (BTC, ETH, SOL)
 5. Commodity: GOLD, SILVER, OIL
-6. confidence = raw confidence × {article['credibility']:.2f}
+6. confidence = (your raw score × {article['credibility']:.2f}) adjusted for red flags
 7. Max 4 tickers
-8. SELL can mean "stock is falling and will fall more" OR "stock is up and you should lock profits" — be explicit which one
-9. BUY can mean "good entry after a dip" OR "momentum play going higher" — be explicit which one
+8. pump_dump_risk must be: LOW | MEDIUM | HIGH — if HIGH, signal MUST be AVOID
+9. SELL — must state: "cut losses, more downside coming" OR "take profits, peak is in"
+10. BUY — must state: "buy the dip, oversold" OR "new catalyst not yet priced in"
+11. Never use finance jargon — write for someone who has never traded before
 """
 
     try:
@@ -108,8 +140,8 @@ Hard rules:
                 {"role": "system", "content": SYSTEM_PROMPT},
                 {"role": "user",   "content": prompt},
             ],
-            temperature = 0.1,
-            max_tokens  = 1200,
+            temperature = 0.05,
+            max_tokens  = 1400,
         )
 
         text = response.choices[0].message.content.strip()
