@@ -11,7 +11,6 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from database import init_db
-from scheduler import start_scheduler, stop_scheduler
 from routers import signals, markets, prices, watchlist, chart, beta
 
 logging.basicConfig(
@@ -29,12 +28,8 @@ ALLOWED_ORIGINS = [o.strip() for o in _raw_origins.split(",") if o.strip()]
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup
     init_db()
-    start_scheduler()
     yield
-    # Shutdown
-    stop_scheduler()
 
 
 app = FastAPI(
@@ -62,3 +57,16 @@ app.include_router(beta.router,      prefix="/api", tags=["Beta"])
 @app.get("/health", tags=["Health"])
 def health():
     return {"status": "ok", "version": "0.1.0", "app": "FinSight"}
+
+
+@app.post("/api/refresh", tags=["Health"])
+def refresh():
+    """Called by cron-job.org every 5 minutes to fetch news + update prices."""
+    try:
+        from services.signal_generator import process_new_articles
+        from services.price_fetcher import update_price_cache
+        count = process_new_articles()
+        update_price_cache()
+        return {"status": "ok", "new_signals": count}
+    except Exception as e:
+        return {"status": "error", "detail": str(e)}
