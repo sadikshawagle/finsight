@@ -113,13 +113,17 @@ def _resolve_conflict(db, existing: Signal, new_result: dict,
         return new_result
 
 
-def process_new_articles() -> int:
-    """Main scheduled job. Returns count of new signals generated."""
+def process_new_articles(max_articles: int = 0) -> int:
+    """Main pipeline. Returns count of new signals generated.
+    max_articles=0 means no limit (local/dev). Set to 1 for Vercel serverless."""
     db        = SessionLocal()
     articles  = fetch_all_news()
     new_count = 0
+    processed = 0
 
     for article in articles:
+        if max_articles and processed >= max_articles:
+            break
         try:
             # Skip if already in DB
             existing_hash = db.query(Signal).filter(
@@ -183,6 +187,7 @@ def process_new_articles() -> int:
             db.add(row)
             db.commit()
             new_count += 1
+            processed += 1
             log.info(f"[{signal_type}] {article['title'][:70]}")
 
         except Exception as e:

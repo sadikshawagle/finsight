@@ -61,11 +61,11 @@ def health():
 
 @app.post("/api/refresh", tags=["Health"])
 def refresh():
-    """Called by cron-job.org every 5 minutes to fetch news + update prices."""
+    """Called by cron-job.org every minute. Processes 1 article per call to stay within Vercel's timeout."""
     try:
         from services.signal_generator import process_new_articles
         from services.price_fetcher import update_price_cache
-        count = process_new_articles()
+        count = process_new_articles(max_articles=1)
         update_price_cache()
         return {"status": "ok", "new_signals": count}
     except Exception as e:
