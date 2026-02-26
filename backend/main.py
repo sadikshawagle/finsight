@@ -12,7 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from database import init_db
 from scheduler import start_scheduler, stop_scheduler
-from routers import signals, markets, prices, watchlist, chart
+from routers import signals, markets, prices, watchlist, chart, beta
 
 logging.basicConfig(
     level  = logging.INFO,
@@ -56,6 +56,7 @@ app.include_router(markets.router,   prefix="/api", tags=["Markets"])
 app.include_router(prices.router,    prefix="/api", tags=["Prices"])
 app.include_router(watchlist.router, prefix="/api", tags=["Watchlist"])
 app.include_router(chart.router,     prefix="/api", tags=["Chart"])
+app.include_router(beta.router,      prefix="/api", tags=["Beta"])
 
 
 @app.get("/health", tags=["Health"])

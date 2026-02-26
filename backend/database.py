@@ -62,6 +62,16 @@ class WatchlistItem(Base):
     added_at = Column(DateTime, default=datetime.utcnow)
 
 
+class BetaUser(Base):
+    __tablename__ = "beta_users"
+
+    id          = Column(Integer, primary_key=True, index=True)
+    name        = Column(Text, nullable=False)
+    email       = Column(Text, nullable=False, unique=True, index=True)
+    plan        = Column(Text, nullable=False, default="PRO")   # PRO or ELITE
+    signed_up_at = Column(DateTime, default=datetime.utcnow)
+
+
 class ChartSnapshot(Base):
     __tablename__ = "chart_snapshots"
 
