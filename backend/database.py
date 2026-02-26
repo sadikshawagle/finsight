@@ -62,6 +62,18 @@ class WatchlistItem(Base):
     added_at = Column(DateTime, default=datetime.utcnow)
 
 
+class OtpCode(Base):
+    __tablename__ = "otp_codes"
+
+    id         = Column(Integer, primary_key=True, index=True)
+    email      = Column(Text, nullable=False, index=True)
+    code       = Column(Text, nullable=False)
+    name       = Column(Text, nullable=False)
+    plan       = Column(Text, nullable=False)
+    expires_at = Column(DateTime, nullable=False)
+    used       = Column(Boolean, default=False)
+
+
 class BetaUser(Base):
     __tablename__ = "beta_users"
 

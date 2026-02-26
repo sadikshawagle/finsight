@@ -202,10 +202,11 @@ export default function FinSight() {
   const [time,          setTime]        = useState(new Date());
 
   // Beta signup form state
-  const [betaStep,      setBetaStep]    = useState("pick");   // "pick" | "form" | "done"
+  const [betaStep,      setBetaStep]    = useState("pick");   // "pick" | "form" | "verify" | "done"
   const [betaChoice,    setBetaChoice]  = useState("PRO");
   const [betaName,      setBetaName]    = useState("");
   const [betaEmail,     setBetaEmail]   = useState("");
+  const [betaOtp,       setBetaOtp]     = useState("");
   const [betaSubmitting,setBetaSubmitting] = useState(false);
   const [betaError,     setBetaError]   = useState("");
 
@@ -247,12 +248,46 @@ export default function FinSight() {
     setBetaSubmitting(true);
     try {
       const BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-      await fetch(`${BASE}/api/beta-signup`, {
+      const res = await fetch(`${BASE}/api/beta-signup`, {
         method:  "POST",
         headers: { "Content-Type": "application/json" },
         body:    JSON.stringify({ name: betaName.trim(), email: betaEmail.trim(), plan: betaChoice }),
       });
-      setPlan(betaChoice);
+      if (!res.ok) {
+        const err = await res.json();
+        setBetaError(err.detail || "Something went wrong. Please try again.");
+        return;
+      }
+      setBetaOtp("");
+      setBetaStep("verify");
+    } catch {
+      setBetaError("Something went wrong. Please try again.");
+    } finally {
+      setBetaSubmitting(false);
+    }
+  };
+
+  const handleBetaVerify = async () => {
+    if (!betaOtp.trim()) {
+      setBetaError("Please enter the verification code.");
+      return;
+    }
+    setBetaError("");
+    setBetaSubmitting(true);
+    try {
+      const BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+      const res = await fetch(`${BASE}/api/beta-verify`, {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({ email: betaEmail.trim(), code: betaOtp.trim() }),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        setBetaError(err.detail || "Invalid code. Please try again.");
+        return;
+      }
+      const data = await res.json();
+      setPlan(data.plan);
       setBetaStep("done");
     } catch {
       setBetaError("Something went wrong. Please try again.");
@@ -265,6 +300,7 @@ export default function FinSight() {
     setBetaStep("pick");
     setBetaName("");
     setBetaEmail("");
+    setBetaOtp("");
     setBetaError("");
     setShowUpgrade(true);
   };
@@ -388,7 +424,40 @@ export default function FinSight() {
               </>
             )}
 
-            {/* ── STEP 3: Success ── */}
+            {/* ── STEP 3: Verify OTP ── */}
+            {betaStep === "verify" && (
+              <>
+                <div style={{ textAlign: "center", marginBottom: 20 }}>
+                  <div style={{ fontSize: 28, marginBottom: 8 }}>📧</div>
+                  <div style={{ fontSize: 20, fontWeight: 900, marginBottom: 6 }}>Check your email</div>
+                  <div style={{ fontSize: 12, color: "#8b949e", lineHeight: 1.6 }}>
+                    We sent a 6-digit code to<br />
+                    <span style={{ color: "#4ade80", fontWeight: 700 }}>{betaEmail}</span>
+                  </div>
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 16 }}>
+                  <input
+                    value={betaOtp}
+                    onChange={e => setBetaOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                    onKeyDown={e => e.key === "Enter" && handleBetaVerify()}
+                    placeholder="Enter 6-digit code"
+                    maxLength={6}
+                    style={{ background: "#161b22", border: "1px solid #30363d", borderRadius: 8, padding: "12px 14px", color: "#4ade80", fontSize: 20, fontFamily: "monospace", outline: "none", width: "100%", boxSizing: "border-box", textAlign: "center", letterSpacing: "0.3em" }}
+                  />
+                  {betaError && <div style={{ fontSize: 11, color: "#f87171" }}>{betaError}</div>}
+                </div>
+                <button
+                  onClick={handleBetaVerify}
+                  disabled={betaSubmitting || betaOtp.length < 6}
+                  style={{ width: "100%", background: "linear-gradient(135deg, rgba(74,222,128,0.2), rgba(34,211,238,0.2))", border: "1px solid rgba(74,222,128,0.4)", color: "#4ade80", padding: "12px 0", borderRadius: 8, fontSize: 13, fontWeight: 800, cursor: (betaSubmitting || betaOtp.length < 6) ? "not-allowed" : "pointer", fontFamily: "monospace", letterSpacing: "0.05em" }}>
+                  {betaSubmitting ? "Verifying..." : `Verify & Unlock ${betaChoice} →`}
+                </button>
+                <button onClick={() => { setBetaStep("form"); setBetaError(""); }} style={{ width: "100%", marginTop: 8, background: "none", border: "none", color: "#4b5563", fontSize: 11, cursor: "pointer", padding: "6px 0" }}>← Resend code</button>
+                <div style={{ fontSize: 10, color: "#374151", textAlign: "center", marginTop: 8 }}>Code expires in 10 minutes.</div>
+              </>
+            )}
+
+            {/* ── STEP 4: Success ── */}
             {betaStep === "done" && (
               <div style={{ textAlign: "center", padding: "8px 0" }}>
                 <div style={{ fontSize: 40, marginBottom: 12 }}>🎉</div>

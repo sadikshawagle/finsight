@@ -13,4 +13,5 @@ finnhub-python
 newsapi-python
 pydantic-settings
 email-validator
+resend
 pytz

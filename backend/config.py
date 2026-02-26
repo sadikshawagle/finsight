@@ -7,6 +7,8 @@ class Settings(BaseSettings):
     FINNHUB_API_KEY: str = ""
     NEWS_API_KEY: str = ""
     TWITTER_BEARER_TOKEN: str = ""
+    RESEND_API_KEY: str = ""
+    RESEND_FROM: str = "FinSight <onboarding@resend.dev>"
 
     FREE_SIGNAL_LIMIT: int = 3
     FREE_WATCHLIST_LIMIT: int = 5
