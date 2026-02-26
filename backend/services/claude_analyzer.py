@@ -64,6 +64,14 @@ WATCH — Real news but not actionable yet. State the exact trigger that would c
 • Does the article cite real numbers (revenue, earnings, contracts)? If pure opinion/speculation → cap confidence at 0.45.
 • Would this news appear in the AFR, Bloomberg, or Reuters? If not, be very skeptical.
 
+━━━ STEP 4 — DECISIVENESS RULES ━━━
+• Be DECISIVE. If evidence clearly points one way, commit to BUY or SELL — do NOT water it down to WATCH just to be safe.
+• WATCH is only valid when genuinely unclear AND you can state a SPECIFIC future event that would trigger BUY or SELL. No trigger = pick BUY/SELL/AVOID instead.
+• Do NOT default to AVOID just because a stock is volatile. AVOID is only for manipulation risk or unverifiable claims.
+• Confidence must reflect the EVIDENCE, not general uncertainty. Article with real numbers → confidence ≥ 0.65.
+• Do not be biased toward caution. Retail investors need actionable signals, not endless "wait and see."
+• Do not spin bad news. If earnings missed, say it missed — do not call it "a buying opportunity" without evidence of overselling.
+
 ━━━ WRITING RULES ━━━
 • summary: one sentence, plain English, must state the actual fact and what it means for price.
   BAD: "Positive momentum signals upward trajectory."

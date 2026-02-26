@@ -7,6 +7,7 @@ from __future__ import annotations
 import finnhub
 import hashlib
 import logging
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta
 from typing import List
 from config import settings, get_credibility, MIN_CREDIBILITY
@@ -87,48 +88,57 @@ def _build_article(title: str, source: str, url: str, pub_time: datetime,
     }
 
 
+def _fetch_finnhub_category(category: str) -> list:
+    """Fetch one Finnhub category — called in parallel."""
+    try:
+        return finnhub_client.general_news(category, min_id=0)
+    except Exception as e:
+        log.warning(f"Finnhub category '{category}' failed: {e}")
+        return []
+
+
 def fetch_finnhub_news() -> List[dict]:
-    """Fetch news from multiple Finnhub categories."""
+    """Fetch news from all Finnhub categories in parallel."""
     articles  = []
     seen_urls = set()
-    cutoff    = datetime.utcnow() - timedelta(hours=6)  # wider window
+    cutoff    = datetime.utcnow() - timedelta(hours=6)
 
-    for category in FINNHUB_CATEGORIES:
+    # Fetch all categories concurrently instead of one by one
+    with ThreadPoolExecutor(max_workers=4) as executor:
+        futures = [executor.submit(_fetch_finnhub_category, cat) for cat in FINNHUB_CATEGORIES]
+        all_raw = []
+        for future in futures:
+            all_raw.extend(future.result())
+
+    for item in all_raw:
         try:
-            raw = finnhub_client.general_news(category, min_id=0)
+            pub_time = datetime.utcfromtimestamp(item.get("datetime", 0))
+            if pub_time < cutoff:
+                continue
+
+            url = item.get("url", "")
+            if url in seen_urls:
+                continue
+            seen_urls.add(url)
+
+            credibility = _get_cred(url)
+            if credibility < MIN_CREDIBILITY:
+                continue
+
+            content = item.get("summary", "") or item.get("headline", "")
+            if not content or len(content) < 30:
+                continue
+
+            articles.append(_build_article(
+                title       = item.get("headline", ""),
+                source      = item.get("source", "Finnhub"),
+                url         = url,
+                pub_time    = pub_time,
+                content     = content,
+                credibility = credibility,
+            ))
         except Exception as e:
-            log.warning(f"Finnhub category '{category}' failed: {e}")
-            continue
-
-        for item in raw:
-            try:
-                pub_time = datetime.utcfromtimestamp(item.get("datetime", 0))
-                if pub_time < cutoff:
-                    continue
-
-                url = item.get("url", "")
-                if url in seen_urls:
-                    continue
-                seen_urls.add(url)
-
-                credibility = _get_cred(url)
-                if credibility < MIN_CREDIBILITY:
-                    continue
-
-                content = item.get("summary", "") or item.get("headline", "")
-                if not content or len(content) < 30:
-                    continue
-
-                articles.append(_build_article(
-                    title       = item.get("headline", ""),
-                    source      = item.get("source", "Finnhub"),
-                    url         = url,
-                    pub_time    = pub_time,
-                    content     = content,
-                    credibility = credibility,
-                ))
-            except Exception as e:
-                log.warning(f"Skipping Finnhub item: {e}")
+            log.warning(f"Skipping Finnhub item: {e}")
 
     log.info(f"Finnhub: {len(articles)} credible articles across {len(FINNHUB_CATEGORIES)} categories")
     return articles
@@ -197,11 +207,17 @@ def fetch_newsapi_news() -> List[dict]:
 
 
 def fetch_all_news() -> List[dict]:
-    """Combine and deduplicate news from all sources."""
+    """Fetch Finnhub and NewsAPI concurrently, then deduplicate."""
     seen_hashes = set()
     combined    = []
 
-    for article in fetch_finnhub_news() + fetch_newsapi_news():
+    # Run both sources at the same time
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        f_finnhub = executor.submit(fetch_finnhub_news)
+        f_newsapi = executor.submit(fetch_newsapi_news)
+        all_articles = f_finnhub.result() + f_newsapi.result()
+
+    for article in all_articles:
         h = article["news_hash"]
         if h not in seen_hashes:
             seen_hashes.add(h)
