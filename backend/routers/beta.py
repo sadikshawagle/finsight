@@ -9,7 +9,7 @@ router = APIRouter()
 
 class BetaSignupRequest(BaseModel):
     name:  str
-    email: str
+    email: EmailStr
     plan:  str = "PRO"
 
 

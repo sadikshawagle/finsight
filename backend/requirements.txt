@@ -12,4 +12,5 @@ tweepy
 finnhub-python
 newsapi-python
 pydantic-settings
+email-validator
 pytz
