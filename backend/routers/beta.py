@@ -1,5 +1,8 @@
 import random
 import logging
+import smtplib
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
 from datetime import datetime, timedelta
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
@@ -23,31 +26,35 @@ class BetaVerifyRequest(BaseModel):
 
 
 def _send_otp_email(to_email: str, name: str, code: str, plan: str):
-    """Send OTP via Resend. Falls back to logging if key not set."""
-    if not settings.RESEND_API_KEY:
-        log.warning(f"[OTP] No RESEND_API_KEY set. Code for {to_email}: {code}")
+    """Send OTP via Gmail SMTP. Falls back to logging if credentials not set."""
+    if not settings.GMAIL_USER or not settings.GMAIL_APP_PASSWORD:
+        log.warning(f"[OTP] No Gmail credentials set. Code for {to_email}: {code}")
         return
 
+    html = f"""
+        <div style="font-family:monospace;background:#0d1117;color:#e6edf3;padding:32px;border-radius:12px;max-width:480px">
+          <h2 style="color:#4ade80;margin-bottom:8px">FinSight</h2>
+          <p>Hi {name},</p>
+          <p>Your verification code for <strong>{plan}</strong> access is:</p>
+          <div style="background:#161b22;border:1px solid #30363d;border-radius:8px;padding:20px;text-align:center;margin:20px 0">
+            <span style="font-size:36px;font-weight:900;letter-spacing:0.3em;color:#4ade80">{code}</span>
+          </div>
+          <p style="color:#6b7280;font-size:12px">This code expires in 10 minutes. Do not share it with anyone.</p>
+          <p style="color:#374151;font-size:11px">Not financial advice. FinSight is an informational tool only.</p>
+        </div>
+    """
+
     try:
-        import resend
-        resend.api_key = settings.RESEND_API_KEY
-        resend.Emails.send({
-            "from":    settings.RESEND_FROM,
-            "to":      [to_email],
-            "subject": "Your FinSight verification code",
-            "html":    f"""
-                <div style="font-family:monospace;background:#0d1117;color:#e6edf3;padding:32px;border-radius:12px;max-width:480px">
-                  <h2 style="color:#4ade80;margin-bottom:8px">FinSight</h2>
-                  <p>Hi {name},</p>
-                  <p>Your verification code for <strong>{plan}</strong> access is:</p>
-                  <div style="background:#161b22;border:1px solid #30363d;border-radius:8px;padding:20px;text-align:center;margin:20px 0">
-                    <span style="font-size:36px;font-weight:900;letter-spacing:0.3em;color:#4ade80">{code}</span>
-                  </div>
-                  <p style="color:#6b7280;font-size:12px">This code expires in 10 minutes. Do not share it with anyone.</p>
-                  <p style="color:#374151;font-size:11px">Not financial advice. FinSight is an informational tool only.</p>
-                </div>
-            """,
-        })
+        msg = MIMEMultipart("alternative")
+        msg["Subject"] = "Your FinSight verification code"
+        msg["From"]    = f"FinSight <{settings.GMAIL_USER}>"
+        msg["To"]      = to_email
+        msg.attach(MIMEText(html, "html"))
+
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+            server.login(settings.GMAIL_USER, settings.GMAIL_APP_PASSWORD)
+            server.sendmail(settings.GMAIL_USER, to_email, msg.as_string())
+
         log.info(f"OTP email sent to {to_email}")
     except Exception as e:
         log.error(f"Failed to send OTP email to {to_email}: {e}")

@@ -9,6 +9,8 @@ class Settings(BaseSettings):
     TWITTER_BEARER_TOKEN: str = ""
     RESEND_API_KEY: str = ""
     RESEND_FROM: str = "FinSight <onboarding@resend.dev>"
+    GMAIL_USER: str = ""
+    GMAIL_APP_PASSWORD: str = ""
 
     FREE_SIGNAL_LIMIT: int = 3
     FREE_WATCHLIST_LIMIT: int = 5
