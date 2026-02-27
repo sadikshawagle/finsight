@@ -51,7 +51,7 @@ def _send_otp_email(to_email: str, name: str, code: str, plan: str):
         log.info(f"OTP email sent to {to_email}")
     except Exception as e:
         log.error(f"Failed to send OTP email to {to_email}: {e}")
-        raise HTTPException(status_code=500, detail="Failed to send verification email. Please try again.")
+        raise HTTPException(status_code=500, detail=f"Email error: {str(e)}")
 
 
 @router.post("/beta-signup")
