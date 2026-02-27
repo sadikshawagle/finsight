@@ -10,6 +10,7 @@ Orchestrates the full pipeline:
 import json
 import logging
 from datetime import datetime, timedelta
+from typing import Optional
 import pytz
 
 from database import SessionLocal, Signal, ChartSnapshot
@@ -32,7 +33,7 @@ CONFLICTS = {
 CONFLICT_WINDOW_HOURS = 24
 
 
-def _find_conflict(db, tickers: list, new_signal: str) -> Signal | None:
+def _find_conflict(db, tickers: list, new_signal: str) -> Optional[Signal]:
     """
     Return the most recent active conflicting signal for any of these tickers,
     within the conflict window. Returns None if no conflict.

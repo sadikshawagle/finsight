@@ -247,7 +247,7 @@ export default function FinSight() {
     setBetaError("");
     setBetaSubmitting(true);
     try {
-      const BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+      const BASE = process.env.NEXT_PUBLIC_API_URL || "https://finsight-vmas.vercel.app";
       const res = await fetch(`${BASE}/api/beta-signup`, {
         method:  "POST",
         headers: { "Content-Type": "application/json" },
@@ -275,7 +275,7 @@ export default function FinSight() {
     setBetaError("");
     setBetaSubmitting(true);
     try {
-      const BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+      const BASE = process.env.NEXT_PUBLIC_API_URL || "https://finsight-vmas.vercel.app";
       const res = await fetch(`${BASE}/api/beta-verify`, {
         method:  "POST",
         headers: { "Content-Type": "application/json" },
