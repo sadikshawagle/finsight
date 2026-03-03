@@ -103,14 +103,11 @@ def beta_verify(payload: BetaVerifyRequest, db: Session = Depends(get_db)):
     if otp.code != payload.code.strip():
         raise HTTPException(status_code=400, detail="Incorrect code. Please try again.")
 
-    # Mark OTP as used
-    otp.used = True
-    db.commit()
-
-    # Save or update BetaUser
+    # Save or update BetaUser FIRST, then mark OTP as used — all in one commit
     existing = db.query(BetaUser).filter(BetaUser.email == email).first()
     if existing:
         existing.plan = otp.plan
+        otp.used = True
         db.commit()
         token = _issue_token(existing)
         return {"status": "ok", "plan": existing.plan, "already_registered": True, "token": token}
@@ -124,6 +121,7 @@ def beta_verify(payload: BetaVerifyRequest, db: Session = Depends(get_db)):
         trial_ends_at = now + timedelta(days=30),
     )
     db.add(user)
+    otp.used = True
     db.commit()
     token = _issue_token(user)
     return {"status": "ok", "plan": otp.plan, "already_registered": False, "token": token}
