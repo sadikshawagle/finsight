@@ -72,6 +72,14 @@ def beta_signup(payload: BetaSignupRequest, db: Session = Depends(get_db)):
     email = payload.email.lower().strip()
     name  = payload.name.strip()
 
+    # Block signup if this email already has a registered account with a password
+    existing = db.query(BetaUser).filter(BetaUser.email == email).first()
+    if existing and existing.password_hash:
+        raise HTTPException(
+            status_code=409,
+            detail="This email is already registered. Please sign in instead."
+        )
+
     # Generate 6-digit OTP
     code = str(random.randint(100000, 999999))
     expires_at = datetime.utcnow() + timedelta(minutes=10)
@@ -124,6 +132,9 @@ def beta_verify(payload: BetaVerifyRequest, db: Session = Depends(get_db)):
             existing.plan = otp.plan
             if pw_hash:
                 existing.password_hash = pw_hash
+            # Set trial if it was never set (e.g. user created before trial tracking)
+            if not existing.trial_ends_at:
+                existing.trial_ends_at = datetime.utcnow() + timedelta(days=30)
             otp.used = True
             db.commit()
             token = _issue_token(existing)

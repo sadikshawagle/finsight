@@ -276,6 +276,14 @@ export default function FinSight() {
       if (!res.ok) {
         let detail = `Server error (${res.status}). Please try again.`;
         try { const err = await res.json(); detail = err.detail || detail; } catch {}
+        if (res.status === 409) {
+          // Already registered — close signup, open login
+          setShowUpgrade(false);
+          setLoginEmail(betaEmail.trim());
+          setLoginStep("login");
+          setShowLogin(true);
+          return;
+        }
         setBetaError(detail);
         return;
       }
@@ -494,12 +502,8 @@ export default function FinSight() {
                 </button>
               </div>
             </div>
-            <button
-              onClick={auth.logout}
-              style={{ width: "100%", background: "none", border: "1px solid #1f2937", color: "#6b7280", padding: "10px 0", borderRadius: 8, fontSize: 12, cursor: "pointer", fontFamily: "monospace" }}>
-              Continue on FREE plan
-            </button>
-            <div style={{ fontSize: 10, color: "#374151", marginTop: 12 }}>Not financial advice. Cancel anytime.</div>
+            <div style={{ fontSize: 10, color: "#374151", marginTop: 4 }}>Not financial advice. Cancel anytime.</div>
+            <button onClick={auth.logout} style={{ marginTop: 12, background: "none", border: "none", color: "#4b5563", fontSize: 11, cursor: "pointer", textDecoration: "underline" }}>Sign out</button>
           </div>
         </div>
       )}
