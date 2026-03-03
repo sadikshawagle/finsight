@@ -221,14 +221,15 @@ export default function FinSight() {
   const [loginBusy,      setLoginBusy]      = useState(false);
 
   // Beta signup form state
-  const [betaStep,      setBetaStep]    = useState("pick");   // "pick" | "form" | "verify" | "set_password" | "done"
-  const [betaChoice,    setBetaChoice]  = useState("PRO");
-  const [betaName,      setBetaName]    = useState("");
-  const [betaEmail,     setBetaEmail]   = useState("");
-  const [betaOtp,       setBetaOtp]     = useState("");
-  const [betaPassword,  setBetaPassword]= useState("");
-  const [betaSubmitting,setBetaSubmitting] = useState(false);
-  const [betaError,     setBetaError]   = useState("");
+  const [betaStep,           setBetaStep]           = useState("pick"); // "pick"|"form"|"verify"|"done"
+  const [betaChoice,         setBetaChoice]         = useState("PRO");
+  const [betaName,           setBetaName]           = useState("");
+  const [betaEmail,          setBetaEmail]          = useState("");
+  const [betaOtp,            setBetaOtp]            = useState("");
+  const [betaPassword,       setBetaPassword]       = useState("");
+  const [betaPasswordConfirm,setBetaPasswordConfirm]= useState("");
+  const [betaSubmitting,     setBetaSubmitting]     = useState(false);
+  const [betaError,          setBetaError]          = useState("");
 
   // ── Real data hooks ──────────────────────────────────────────────────────
   const { signals, loading: sigLoading, newId } = useSignals(effectivePlan);
@@ -260,10 +261,9 @@ export default function FinSight() {
   };
 
   const handleBetaSubmit = async () => {
-    if (!betaName.trim() || !betaEmail.trim()) {
-      setBetaError("Please enter your name and email.");
-      return;
-    }
+    if (!betaName.trim() || !betaEmail.trim()) { setBetaError("Please enter your name and email."); return; }
+    if (betaPassword.length < 8) { setBetaError("Password must be at least 8 characters."); return; }
+    if (betaPassword !== betaPasswordConfirm) { setBetaError("Passwords don't match."); return; }
     setBetaError("");
     setBetaSubmitting(true);
     try {
@@ -299,7 +299,7 @@ export default function FinSight() {
       const res = await fetch(`${BASE}/api/beta-verify`, {
         method:  "POST",
         headers: { "Content-Type": "application/json" },
-        body:    JSON.stringify({ email: betaEmail.trim(), code: betaOtp.trim() }),
+        body:    JSON.stringify({ email: betaEmail.trim(), code: betaOtp.trim(), password: betaPassword }),
       });
       if (!res.ok) {
         const err = await res.json();
@@ -310,23 +310,13 @@ export default function FinSight() {
       setPlan(data.plan);
       if (data.token) auth.saveToken(data.token);
       setBetaPassword("");
-      setBetaStep("set_password");
+      setBetaPasswordConfirm("");
+      setBetaStep("done");
     } catch {
       setBetaError("Something went wrong. Please try again.");
     } finally {
       setBetaSubmitting(false);
     }
-  };
-
-  const handleBetaSetPassword = async () => {
-    if (betaPassword.length < 8) { setBetaError("Password must be at least 8 characters."); return; }
-    setBetaError(""); setBetaSubmitting(true);
-    try {
-      await postJSON("/api/login/set-password", { password: betaPassword });
-      setBetaStep("done");
-    } catch {
-      setBetaError("Could not save password. You can set it later via Forgot password.");
-    } finally { setBetaSubmitting(false); }
   };
 
   // ── Login handlers ────────────────────────────────────────────────────────
@@ -463,39 +453,49 @@ export default function FinSight() {
       {/* ── Trial expired paywall ── */}
       {auth.isLoggedIn && !auth.hasAccess && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.92)", zIndex: 60, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
-          <div style={{ background: "#0d1117", border: "1px solid #30363d", borderRadius: 16, padding: 36, maxWidth: 460, width: "100%", textAlign: "center" }}>
-            <div style={{ fontSize: 36, marginBottom: 12 }}>📊</div>
-            <div style={{ fontSize: 20, fontWeight: 900, marginBottom: 8 }}>Your 30-day trial has ended</div>
-            <div style={{ fontSize: 13, color: "#8b949e", lineHeight: 1.7, marginBottom: 24 }}>
-              Are you getting value from <span style={{ color: "#4ade80", fontWeight: 700 }}>FinSight {auth.user?.plan}</span>?<br />
-              Subscribe below to keep your full access — or drop back to the free plan.
+          <div style={{ background: "#0d1117", border: "1px solid #30363d", borderRadius: 16, padding: 36, maxWidth: 480, width: "100%", textAlign: "center" }}>
+            <div style={{ fontSize: 36, marginBottom: 12 }}>⏰</div>
+            <div style={{ fontSize: 21, fontWeight: 900, marginBottom: 10 }}>Your free trial has ended</div>
+            <div style={{ fontSize: 13, color: "#8b949e", lineHeight: 1.8, marginBottom: 24 }}>
+              We can see that your free period to access <span style={{ color: "#4ade80", fontWeight: 700 }}>FinSight {auth.user?.plan}</span> has now ended.<br />
+              Please proceed with a payment plan to continue viewing real-time signals.
             </div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 16 }}>
-              <div style={{ background: "rgba(74,222,128,0.08)", border: "1px solid rgba(74,222,128,0.3)", borderRadius: 10, padding: 14 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 20 }}>
+              <div style={{ background: "rgba(74,222,128,0.08)", border: "1px solid rgba(74,222,128,0.3)", borderRadius: 10, padding: 16 }}>
                 <div style={{ fontSize: 13, fontWeight: 800, color: "#4ade80", marginBottom: 4 }}>PRO</div>
-                <div style={{ fontSize: 22, fontWeight: 900, marginBottom: 4 }}>$8.99<span style={{ fontSize: 11, fontWeight: 400, color: "#6b7280" }}> AUD/mo</span></div>
-                <div style={{ fontSize: 10, color: "#8b949e" }}>50 signals · All markets · Full AI reasoning</div>
+                <div style={{ fontSize: 24, fontWeight: 900, marginBottom: 2 }}>$8.99<span style={{ fontSize: 11, fontWeight: 400, color: "#6b7280" }}> AUD/mo</span></div>
+                <div style={{ fontSize: 10, color: "#8b949e", marginBottom: 10 }}>50 signals · All markets · Full AI reasoning</div>
+                <button
+                  onClick={async () => {
+                    try {
+                      const data = await postJSON("/api/payments/create-checkout", { plan: "PRO" });
+                      if (data.status === "coming_soon") alert("Stripe payments are being set up. We\u2019ll email you at " + auth.user?.sub + " when subscriptions go live.");
+                    } catch { alert("Something went wrong. Please try again."); }
+                  }}
+                  style={{ width: "100%", background: "rgba(74,222,128,0.15)", border: "1px solid rgba(74,222,128,0.4)", color: "#4ade80", padding: "8px 0", borderRadius: 6, fontSize: 11, fontWeight: 800, cursor: "pointer", fontFamily: "monospace" }}>
+                  Subscribe PRO →
+                </button>
               </div>
-              <div style={{ background: "rgba(74,222,128,0.05)", border: "1px solid rgba(74,222,128,0.2)", borderRadius: 10, padding: 14 }}>
+              <div style={{ background: "rgba(34,211,238,0.06)", border: "1px solid rgba(34,211,238,0.25)", borderRadius: 10, padding: 16 }}>
                 <div style={{ fontSize: 13, fontWeight: 800, color: "#22d3ee", marginBottom: 4 }}>ELITE</div>
-                <div style={{ fontSize: 22, fontWeight: 900, marginBottom: 4 }}>$15.99<span style={{ fontSize: 11, fontWeight: 400, color: "#6b7280" }}> AUD/mo</span></div>
-                <div style={{ fontSize: 10, color: "#8b949e" }}>Unlimited · Real-time · M&A analysis</div>
+                <div style={{ fontSize: 24, fontWeight: 900, marginBottom: 2 }}>$15.99<span style={{ fontSize: 11, fontWeight: 400, color: "#6b7280" }}> AUD/mo</span></div>
+                <div style={{ fontSize: 10, color: "#8b949e", marginBottom: 10 }}>Unlimited · Real-time · M&A analysis</div>
+                <button
+                  onClick={async () => {
+                    try {
+                      const data = await postJSON("/api/payments/create-checkout", { plan: "ELITE" });
+                      if (data.status === "coming_soon") alert("Stripe payments are being set up. We\u2019ll email you at " + auth.user?.sub + " when subscriptions go live.");
+                    } catch { alert("Something went wrong. Please try again."); }
+                  }}
+                  style={{ width: "100%", background: "rgba(34,211,238,0.12)", border: "1px solid rgba(34,211,238,0.35)", color: "#22d3ee", padding: "8px 0", borderRadius: 6, fontSize: 11, fontWeight: 800, cursor: "pointer", fontFamily: "monospace" }}>
+                  Subscribe ELITE →
+                </button>
               </div>
             </div>
-            <button
-              onClick={async () => {
-                try {
-                  const data = await postJSON("/api/payments/create-checkout", {});
-                  if (data.status === "coming_soon") alert("Subscriptions are coming very soon! We'll email you at " + auth.user?.sub + " when they go live.");
-                } catch { alert("Something went wrong. Please try again."); }
-              }}
-              style={{ width: "100%", background: "linear-gradient(135deg, rgba(74,222,128,0.2), rgba(34,211,238,0.2))", border: "1px solid rgba(74,222,128,0.4)", color: "#4ade80", padding: "12px 0", borderRadius: 8, fontSize: 13, fontWeight: 800, cursor: "pointer", fontFamily: "monospace", marginBottom: 10 }}>
-              Yes, I want to subscribe →
-            </button>
             <button
               onClick={auth.logout}
               style={{ width: "100%", background: "none", border: "1px solid #1f2937", color: "#6b7280", padding: "10px 0", borderRadius: 8, fontSize: 12, cursor: "pointer", fontFamily: "monospace" }}>
-              No thanks — drop to FREE plan
+              Continue on FREE plan
             </button>
             <div style={{ fontSize: 10, color: "#374151", marginTop: 12 }}>Not financial advice. Cancel anytime.</div>
           </div>
@@ -604,55 +604,73 @@ export default function FinSight() {
             {/* ── STEP 1: Pick a plan ── */}
             {betaStep === "pick" && (
               <>
-                <div style={{ textAlign: "center", marginBottom: 8 }}>
-                  <div style={{ fontSize: 11, color: "#4ade80", fontWeight: 700, letterSpacing: "0.1em", marginBottom: 8, textTransform: "uppercase" }}>🎉 Beta Launch — Free Access</div>
-                  <div style={{ fontSize: 22, fontWeight: 900, marginBottom: 6 }}>Unlock FinSight Pro</div>
-                  <div style={{ fontSize: 13, color: "#8b949e", lineHeight: 1.5 }}>Enjoy full Pro or Elite access completely free while we&apos;re in beta. No card needed.</div>
+                <div style={{ textAlign: "center", marginBottom: 20 }}>
+                  <div style={{ fontSize: 11, color: "#4ade80", fontWeight: 700, letterSpacing: "0.1em", marginBottom: 8, textTransform: "uppercase" }}>30-Day Free Trial — No Card Required</div>
+                  <div style={{ fontSize: 22, fontWeight: 900, marginBottom: 8 }}>Choose your plan</div>
+                  <div style={{ fontSize: 13, color: "#8b949e", lineHeight: 1.6 }}>
+                    Start completely free for 30 days.<br />
+                    <span style={{ color: "#6b7280", fontSize: 12 }}>After your trial, a paid plan is required to keep full access.</span>
+                  </div>
                 </div>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 20, marginTop: 20 }}>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 20 }}>
                   {[
-                    { plan: "PRO",   label: "PRO",   features: ["50 stocks", "Hourly refresh", "Full AI reasoning", "US + ASX markets"] },
-                    { plan: "ELITE", label: "ELITE", features: ["Unlimited stocks", "Real-time signals", "All markets", "M&A analysis"] },
+                    { plan: "PRO",   price: "$8.99",  colour: "#4ade80", features: ["50 signals", "Hourly refresh", "Full AI reasoning", "US + ASX markets"] },
+                    { plan: "ELITE", price: "$15.99", colour: "#22d3ee", features: ["Unlimited signals", "Real-time updates", "All markets", "M&A analysis"] },
                   ].map(p => (
                     <div key={p.plan}
                       onClick={() => { setBetaChoice(p.plan); setBetaStep("form"); }}
                       style={{
-                        background: p.plan === "ELITE" ? "rgba(74,222,128,0.05)" : "#161b22",
-                        border: betaChoice === p.plan ? "1px solid #4ade80" : p.plan === "ELITE" ? "1px solid rgba(74,222,128,0.3)" : "1px solid #30363d",
+                        background: betaChoice === p.plan ? `rgba(${p.plan === "PRO" ? "74,222,128" : "34,211,238"},0.08)` : "#161b22",
+                        border: `1px solid ${betaChoice === p.plan ? p.colour : "#30363d"}`,
                         borderRadius: 10, padding: 16, cursor: "pointer", transition: "all 0.2s",
                       }}>
-                      <div style={{ fontWeight: 800, fontSize: 13, marginBottom: 4 }}>{p.label}</div>
-                      <div style={{ fontSize: 13, fontWeight: 900, color: "#4ade80", marginBottom: 10 }}>FREE <span style={{ fontSize: 10, color: "#6b7280", fontWeight: 400 }}>during beta</span></div>
+                      <div style={{ fontWeight: 800, fontSize: 14, color: p.colour, marginBottom: 2 }}>{p.plan}</div>
+                      <div style={{ fontSize: 18, fontWeight: 900, marginBottom: 2 }}>{p.price}<span style={{ fontSize: 10, fontWeight: 400, color: "#6b7280" }}> AUD/mo</span></div>
+                      <div style={{ fontSize: 10, color: "#4ade80", fontWeight: 700, marginBottom: 10 }}>First 30 days FREE</div>
                       {p.features.map(f => <div key={f} style={{ fontSize: 11, color: "#8b949e", marginBottom: 3 }}>✓ {f}</div>)}
-                      <div style={{ marginTop: 10, fontSize: 11, color: "#4ade80", fontWeight: 700 }}>Select {p.label} →</div>
+                      <div style={{ marginTop: 10, fontSize: 11, color: p.colour, fontWeight: 700 }}>Select {p.plan} →</div>
                     </div>
                   ))}
                 </div>
-                <div style={{ fontSize: 10, color: "#4b5563", textAlign: "center" }}>Pricing applies after beta. Cancel anytime. Not financial advice.</div>
+                <div style={{ fontSize: 10, color: "#4b5563", textAlign: "center" }}>No card needed today. Cancel anytime. Not financial advice.</div>
               </>
             )}
 
-            {/* ── STEP 2: Enter details ── */}
+            {/* ── STEP 2: Create account ── */}
             {betaStep === "form" && (
               <>
                 <div style={{ textAlign: "center", marginBottom: 20 }}>
-                  <div style={{ fontSize: 11, color: "#4ade80", fontWeight: 700, letterSpacing: "0.1em", marginBottom: 8, textTransform: "uppercase" }}>Almost there — {betaChoice} Plan</div>
-                  <div style={{ fontSize: 20, fontWeight: 900, marginBottom: 6 }}>Get Free Beta Access</div>
-                  <div style={{ fontSize: 12, color: "#8b949e", lineHeight: 1.5 }}>Drop your details and we&apos;ll unlock {betaChoice} instantly. We&apos;ll also notify you before pricing kicks in.</div>
+                  <div style={{ fontSize: 11, color: "#4ade80", fontWeight: 700, letterSpacing: "0.1em", marginBottom: 8, textTransform: "uppercase" }}>Create your account — {betaChoice} Plan</div>
+                  <div style={{ fontSize: 20, fontWeight: 900, marginBottom: 6 }}>Start your 30-day free trial</div>
+                  <div style={{ fontSize: 12, color: "#8b949e", lineHeight: 1.5 }}>No card required today. After 30 days, you may need to subscribe to keep {betaChoice} access.</div>
                 </div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 16 }}>
                   <input
                     value={betaName}
                     onChange={e => setBetaName(e.target.value)}
-                    placeholder="Your name"
+                    placeholder="Your full name"
                     style={{ background: "#161b22", border: "1px solid #30363d", borderRadius: 8, padding: "10px 14px", color: "#e6edf3", fontSize: 13, fontFamily: "monospace", outline: "none", width: "100%", boxSizing: "border-box" }}
                   />
                   <input
                     value={betaEmail}
                     onChange={e => setBetaEmail(e.target.value)}
-                    onKeyDown={e => e.key === "Enter" && handleBetaSubmit()}
-                    placeholder="Your email address"
+                    placeholder="Email address"
                     type="email"
+                    style={{ background: "#161b22", border: "1px solid #30363d", borderRadius: 8, padding: "10px 14px", color: "#e6edf3", fontSize: 13, fontFamily: "monospace", outline: "none", width: "100%", boxSizing: "border-box" }}
+                  />
+                  <input
+                    value={betaPassword}
+                    onChange={e => setBetaPassword(e.target.value)}
+                    placeholder="Create a password (min 8 chars)"
+                    type="password"
+                    style={{ background: "#161b22", border: "1px solid #30363d", borderRadius: 8, padding: "10px 14px", color: "#e6edf3", fontSize: 13, fontFamily: "monospace", outline: "none", width: "100%", boxSizing: "border-box" }}
+                  />
+                  <input
+                    value={betaPasswordConfirm}
+                    onChange={e => setBetaPasswordConfirm(e.target.value)}
+                    onKeyDown={e => e.key === "Enter" && handleBetaSubmit()}
+                    placeholder="Confirm password"
+                    type="password"
                     style={{ background: "#161b22", border: "1px solid #30363d", borderRadius: 8, padding: "10px 14px", color: "#e6edf3", fontSize: 13, fontFamily: "monospace", outline: "none", width: "100%", boxSizing: "border-box" }}
                   />
                   {betaError && <div style={{ fontSize: 11, color: "#f87171" }}>{betaError}</div>}
@@ -661,10 +679,10 @@ export default function FinSight() {
                   onClick={handleBetaSubmit}
                   disabled={betaSubmitting}
                   style={{ width: "100%", background: "linear-gradient(135deg, rgba(74,222,128,0.2), rgba(34,211,238,0.2))", border: "1px solid rgba(74,222,128,0.4)", color: "#4ade80", padding: "12px 0", borderRadius: 8, fontSize: 13, fontWeight: 800, cursor: betaSubmitting ? "not-allowed" : "pointer", fontFamily: "monospace", letterSpacing: "0.05em" }}>
-                  {betaSubmitting ? "Unlocking..." : `Unlock ${betaChoice} Free →`}
+                  {betaSubmitting ? "Sending code..." : `Create Account & Verify Email →`}
                 </button>
-                <button onClick={() => setBetaStep("pick")} style={{ width: "100%", marginTop: 8, background: "none", border: "none", color: "#4b5563", fontSize: 11, cursor: "pointer", padding: "6px 0" }}>← Back</button>
-                <div style={{ fontSize: 10, color: "#374151", textAlign: "center", marginTop: 8 }}>No spam. No card. We&apos;ll email you before beta ends.</div>
+                <button onClick={() => { setBetaStep("pick"); setBetaError(""); }} style={{ width: "100%", marginTop: 8, background: "none", border: "none", color: "#4b5563", fontSize: 11, cursor: "pointer", padding: "6px 0" }}>← Back to plans</button>
+                <div style={{ fontSize: 10, color: "#374151", textAlign: "center", marginTop: 8 }}>We&apos;ll email a verification code. No spam.</div>
               </>
             )}
 
@@ -701,48 +719,19 @@ export default function FinSight() {
               </>
             )}
 
-            {/* ── STEP 4: Set password ── */}
-            {betaStep === "set_password" && (
-              <>
-                <div style={{ textAlign: "center", marginBottom: 20 }}>
-                  <div style={{ fontSize: 28, marginBottom: 8 }}>🔐</div>
-                  <div style={{ fontSize: 20, fontWeight: 900, marginBottom: 6 }}>Create your password</div>
-                  <div style={{ fontSize: 12, color: "#8b949e", lineHeight: 1.6 }}>
-                    Set a password so you can log back in anytime.<br />
-                    You&apos;re already signed in — this just saves your credentials.
-                  </div>
-                </div>
-                <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 16 }}>
-                  <input
-                    value={betaPassword}
-                    onChange={e => setBetaPassword(e.target.value)}
-                    onKeyDown={e => e.key === "Enter" && handleBetaSetPassword()}
-                    placeholder="Choose a password (min 8 chars)"
-                    type="password"
-                    style={{ background: "#161b22", border: "1px solid #30363d", borderRadius: 8, padding: "10px 14px", color: "#e6edf3", fontSize: 13, fontFamily: "monospace", outline: "none", width: "100%", boxSizing: "border-box" }}
-                  />
-                  {betaError && <div style={{ fontSize: 11, color: "#f87171" }}>{betaError}</div>}
-                </div>
-                <button
-                  onClick={handleBetaSetPassword}
-                  disabled={betaSubmitting || betaPassword.length < 8}
-                  style={{ width: "100%", background: "linear-gradient(135deg, rgba(74,222,128,0.2), rgba(34,211,238,0.2))", border: "1px solid rgba(74,222,128,0.4)", color: "#4ade80", padding: "12px 0", borderRadius: 8, fontSize: 13, fontWeight: 800, cursor: (betaSubmitting || betaPassword.length < 8) ? "not-allowed" : "pointer", fontFamily: "monospace", letterSpacing: "0.05em" }}>
-                  {betaSubmitting ? "Saving..." : "Save Password & Continue →"}
-                </button>
-                <button onClick={() => { setBetaError(""); setBetaStep("done"); }} style={{ width: "100%", marginTop: 8, background: "none", border: "none", color: "#4b5563", fontSize: 11, cursor: "pointer", padding: "6px 0" }}>Skip for now</button>
-              </>
-            )}
-
-            {/* ── STEP 5: Success ── */}
+            {/* ── STEP 4: Success ── */}
             {betaStep === "done" && (
               <div style={{ textAlign: "center", padding: "8px 0" }}>
                 <div style={{ fontSize: 40, marginBottom: 12 }}>🎉</div>
                 <div style={{ fontSize: 22, fontWeight: 900, marginBottom: 8, background: "linear-gradient(135deg, #4ade80, #22d3ee)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>
                   Welcome to FinSight {betaChoice}!
                 </div>
-                <div style={{ fontSize: 13, color: "#8b949e", lineHeight: 1.7, marginBottom: 20 }}>
-                  You&apos;re in. Enjoy full <span style={{ color: "#4ade80", fontWeight: 700 }}>{betaChoice}</span> access — completely free during our beta launch.<br />
-                  We&apos;ll reach out before any pricing changes. Thanks for being an early supporter!
+                <div style={{ fontSize: 13, color: "#8b949e", lineHeight: 1.7, marginBottom: 8 }}>
+                  Your <span style={{ color: "#4ade80", fontWeight: 700 }}>30-day free trial</span> has started — enjoy full {betaChoice} access at no cost.
+                </div>
+                <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.6, marginBottom: 20 }}>
+                  After 30 days you&apos;ll be asked to choose a paid plan to continue.<br />
+                  You can log back in any time using your email and password.
                 </div>
                 <button
                   onClick={() => setShowUpgrade(false)}

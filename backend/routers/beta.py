@@ -4,9 +4,13 @@ from datetime import datetime, timedelta
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, EmailStr
+from typing import Optional
 from jose import jwt
+from passlib.context import CryptContext
 from database import get_db, BetaUser, OtpCode
 from config import settings
+
+pwd_ctx = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 log    = logging.getLogger(__name__)
 router = APIRouter()
@@ -19,8 +23,9 @@ class BetaSignupRequest(BaseModel):
 
 
 class BetaVerifyRequest(BaseModel):
-    email: EmailStr
-    code:  str
+    email:    EmailStr
+    code:     str
+    password: Optional[str] = None  # set during signup form; hashed + stored on verify
 
 
 def _send_otp_email(to_email: str, name: str, code: str, plan: str):
@@ -103,10 +108,15 @@ def beta_verify(payload: BetaVerifyRequest, db: Session = Depends(get_db)):
     if otp.code != payload.code.strip():
         raise HTTPException(status_code=400, detail="Incorrect code. Please try again.")
 
+    # Hash password if provided
+    pw_hash = pwd_ctx.hash(payload.password) if payload.password and len(payload.password) >= 8 else None
+
     # Save or update BetaUser FIRST, then mark OTP as used — all in one commit
     existing = db.query(BetaUser).filter(BetaUser.email == email).first()
     if existing:
         existing.plan = otp.plan
+        if pw_hash:
+            existing.password_hash = pw_hash
         otp.used = True
         db.commit()
         token = _issue_token(existing)
@@ -119,6 +129,7 @@ def beta_verify(payload: BetaVerifyRequest, db: Session = Depends(get_db)):
         plan          = otp.plan,
         signed_up_at  = now,
         trial_ends_at = now + timedelta(days=30),
+        password_hash = pw_hash,
     )
     db.add(user)
     otp.used = True
