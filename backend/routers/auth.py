@@ -101,6 +101,11 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)):
     if not pwd_ctx.verify(payload.password, user.password_hash):
         raise HTTPException(status_code=401, detail="Incorrect password.")
 
+    # Backfill trial_ends_at for users who signed up before trial tracking was added
+    if not user.trial_ends_at:
+        user.trial_ends_at = datetime.utcnow() + timedelta(days=30)
+        db.commit()
+
     return {"status": "ok", "token": _make_token(user), "plan": user.plan}
 
 
