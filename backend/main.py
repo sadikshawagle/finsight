@@ -61,12 +61,48 @@ def health():
 
 @app.post("/api/refresh", tags=["Health"])
 def refresh():
-    """Called by cron-job.org every minute. Processes 1 article per call to stay within Vercel's timeout."""
+    """Called by GitHub Actions every 5 minutes. Processes 1 article per call to stay within Vercel's timeout."""
+    import logging
+    log = logging.getLogger(__name__)
     try:
+        log.info("Refresh triggered")
         from services.signal_generator import process_new_articles
         from services.price_fetcher import update_price_cache
+        from services.news_aggregator import fetch_all_news
+        
+        # Check if we can fetch news
+        news_count = len(fetch_all_news())
+        log.info(f"Fetched {news_count} articles")
+        
         count = process_new_articles(max_articles=1)
+        log.info(f"Generated {count} new signals")
+        
         update_price_cache()
-        return {"status": "ok", "new_signals": count}
+        log.info("Price cache updated")
+        
+        return {"status": "ok", "new_signals": count, "articles_fetched": news_count}
     except Exception as e:
+        log.error(f"Refresh failed: {e}", exc_info=True)
         return {"status": "error", "detail": str(e)}
+
+
+@app.get("/api/debug/news", tags=["Debug"])
+def debug_news():
+    """Debug endpoint to see what articles are being fetched."""
+    try:
+        from services.news_aggregator import fetch_all_news
+        articles = fetch_all_news()
+        return {
+            "total_articles": len(articles),
+            "articles": [
+                {
+                    "title": a.get("title", "")[:80],
+                    "source": a.get("source", ""),
+                    "credibility": a.get("credibility", 0),
+                    "published_at": str(a.get("published_at", "")),
+                }
+                for a in articles[:10]
+            ]
+        }
+    except Exception as e:
+        return {"status": "error", "detail": str(e), "type": type(e).__name__}
