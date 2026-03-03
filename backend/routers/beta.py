@@ -1,5 +1,4 @@
 import random
-import hashlib
 import logging
 from datetime import datetime, timedelta
 from fastapi import APIRouter, Depends, HTTPException
@@ -11,12 +10,9 @@ from passlib.context import CryptContext
 from database import get_db, BetaUser, OtpCode
 from config import settings
 
-pwd_ctx = CryptContext(schemes=["bcrypt"], deprecated="auto")
-
-
-def _prep_pw(password: str) -> str:
-    """SHA-256 the password before bcrypt — avoids bcrypt's 72-byte hard limit."""
-    return hashlib.sha256(password.encode("utf-8")).hexdigest()
+# pbkdf2_sha256 has no password-length limit (unlike bcrypt's 72-byte cap)
+# and requires no compiled C extensions
+pwd_ctx = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
 
 log    = logging.getLogger(__name__)
 router = APIRouter()
@@ -116,7 +112,7 @@ def beta_verify(payload: BetaVerifyRequest, db: Session = Depends(get_db)):
 
     # Hash password if provided
     try:
-        pw_hash = pwd_ctx.hash(_prep_pw(payload.password)) if payload.password and len(payload.password) >= 8 else None
+        pw_hash = pwd_ctx.hash(payload.password) if payload.password and len(payload.password) >= 8 else None
     except Exception as e:
         log.error(f"Password hashing failed: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Password hashing failed: {str(e)}")
