@@ -96,7 +96,7 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)):
             detail="Password not set yet. Use 'Forgot password' to receive an OTP and set one."
         )
 
-    if not pwd_ctx.verify(payload.password, user.password_hash):
+    if not pwd_ctx.verify(payload.password[:72], user.password_hash):
         raise HTTPException(status_code=401, detail="Incorrect password.")
 
     return {"status": "ok", "token": _make_token(user), "plan": user.plan}
@@ -189,7 +189,7 @@ def set_password(payload: SetPasswordRequest, db: Session = Depends(get_db),
     if not user:
         raise HTTPException(status_code=404, detail="User not found.")
 
-    user.password_hash = pwd_ctx.hash(payload.password)
+    user.password_hash = pwd_ctx.hash(payload.password[:72])
     db.commit()
 
     return {"status": "ok", "token": _make_token(user), "message": "Password set. You are now logged in."}

@@ -110,7 +110,7 @@ def beta_verify(payload: BetaVerifyRequest, db: Session = Depends(get_db)):
 
     # Hash password if provided
     try:
-        pw_hash = pwd_ctx.hash(payload.password) if payload.password and len(payload.password) >= 8 else None
+        pw_hash = pwd_ctx.hash(payload.password[:72]) if payload.password and len(payload.password) >= 8 else None
     except Exception as e:
         log.error(f"Password hashing failed: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Password hashing failed: {str(e)}")
