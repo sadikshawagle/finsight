@@ -274,14 +274,15 @@ export default function FinSight() {
         body:    JSON.stringify({ name: betaName.trim(), email: betaEmail.trim(), plan: betaChoice }),
       });
       if (!res.ok) {
-        const err = await res.json();
-        setBetaError(err.detail || "Something went wrong. Please try again.");
+        let detail = `Server error (${res.status}). Please try again.`;
+        try { const err = await res.json(); detail = err.detail || detail; } catch {}
+        setBetaError(detail);
         return;
       }
       setBetaOtp("");
       setBetaStep("verify");
-    } catch {
-      setBetaError("Something went wrong. Please try again.");
+    } catch (e) {
+      setBetaError(e?.message || "Network error. Please try again.");
     } finally {
       setBetaSubmitting(false);
     }
@@ -302,8 +303,9 @@ export default function FinSight() {
         body:    JSON.stringify({ email: betaEmail.trim(), code: betaOtp.trim(), password: betaPassword }),
       });
       if (!res.ok) {
-        const err = await res.json();
-        setBetaError(err.detail || "Invalid code. Please try again.");
+        let detail = `Server error (${res.status}). Please try again.`;
+        try { const err = await res.json(); detail = err.detail || detail; } catch {}
+        setBetaError(detail);
         return;
       }
       const data = await res.json();
@@ -312,8 +314,8 @@ export default function FinSight() {
       setBetaPassword("");
       setBetaPasswordConfirm("");
       setBetaStep("done");
-    } catch {
-      setBetaError("Something went wrong. Please try again.");
+    } catch (e) {
+      setBetaError(e?.message || "Network error. Please try again.");
     } finally {
       setBetaSubmitting(false);
     }

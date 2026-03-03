@@ -109,33 +109,44 @@ def beta_verify(payload: BetaVerifyRequest, db: Session = Depends(get_db)):
         raise HTTPException(status_code=400, detail="Incorrect code. Please try again.")
 
     # Hash password if provided
-    pw_hash = pwd_ctx.hash(payload.password) if payload.password and len(payload.password) >= 8 else None
+    try:
+        pw_hash = pwd_ctx.hash(payload.password) if payload.password and len(payload.password) >= 8 else None
+    except Exception as e:
+        log.error(f"Password hashing failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Password hashing failed: {str(e)}")
 
     # Save or update BetaUser FIRST, then mark OTP as used — all in one commit
-    existing = db.query(BetaUser).filter(BetaUser.email == email).first()
-    if existing:
-        existing.plan = otp.plan
-        if pw_hash:
-            existing.password_hash = pw_hash
+    try:
+        existing = db.query(BetaUser).filter(BetaUser.email == email).first()
+        if existing:
+            existing.plan = otp.plan
+            if pw_hash:
+                existing.password_hash = pw_hash
+            otp.used = True
+            db.commit()
+            token = _issue_token(existing)
+            return {"status": "ok", "plan": existing.plan, "already_registered": True, "token": token}
+
+        now  = datetime.utcnow()
+        user = BetaUser(
+            name          = otp.name,
+            email         = email,
+            plan          = otp.plan,
+            signed_up_at  = now,
+            trial_ends_at = now + timedelta(days=30),
+            password_hash = pw_hash,
+        )
+        db.add(user)
         otp.used = True
         db.commit()
-        token = _issue_token(existing)
-        return {"status": "ok", "plan": existing.plan, "already_registered": True, "token": token}
-
-    now  = datetime.utcnow()
-    user = BetaUser(
-        name          = otp.name,
-        email         = email,
-        plan          = otp.plan,
-        signed_up_at  = now,
-        trial_ends_at = now + timedelta(days=30),
-        password_hash = pw_hash,
-    )
-    db.add(user)
-    otp.used = True
-    db.commit()
-    token = _issue_token(user)
-    return {"status": "ok", "plan": otp.plan, "already_registered": False, "token": token}
+        token = _issue_token(user)
+        return {"status": "ok", "plan": otp.plan, "already_registered": False, "token": token}
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        log.error(f"beta_verify user creation failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Account creation failed: {str(e)}")
 
 
 def _issue_token(user: BetaUser) -> str:
