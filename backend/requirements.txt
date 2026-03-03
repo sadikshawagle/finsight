@@ -15,3 +15,5 @@ pydantic-settings
 email-validator
 resend
 pytz
+python-jose[cryptography]
+passlib[bcrypt]

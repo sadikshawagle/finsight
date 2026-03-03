@@ -11,7 +11,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from database import init_db
-from routers import signals, markets, prices, watchlist, chart, beta
+from routers import signals, markets, prices, watchlist, chart, beta, auth, payments
 
 logging.basicConfig(
     level  = logging.INFO,
@@ -52,41 +52,13 @@ app.include_router(prices.router,    prefix="/api", tags=["Prices"])
 app.include_router(watchlist.router, prefix="/api", tags=["Watchlist"])
 app.include_router(chart.router,     prefix="/api", tags=["Chart"])
 app.include_router(beta.router,      prefix="/api", tags=["Beta"])
+app.include_router(auth.router,      prefix="/api", tags=["Auth"])
+app.include_router(payments.router,  prefix="/api", tags=["Payments"])
 
 
 @app.get("/health", tags=["Health"])
 def health():
     return {"status": "ok", "version": "0.1.0", "app": "FinSight"}
-
-
-@app.post("/health/init", tags=["Health"])
-def health_init():
-    """One-time bootstrap endpoint to initialize Vercel PostgreSQL database with initial signals."""
-    import logging
-    log = logging.getLogger(__name__)
-    try:
-        log.info("Bootstrap: Initializing database and generating first batch of signals...")
-        from services.signal_generator import process_new_articles
-        from services.price_fetcher import update_price_cache
-        
-        # init_db() is already called in lifespan startup, but can be called again safely
-        init_db()
-        log.info("Bootstrap: Database schema initialized")
-        
-        count = process_new_articles(max_articles=10)
-        log.info(f"Bootstrap: Generated {count} signals")
-        
-        update_price_cache()
-        log.info("Bootstrap: Price cache updated")
-        
-        return {
-            "status": "ok",
-            "message": "Database initialized successfully",
-            "signals_generated": count
-        }
-    except Exception as e:
-        log.error(f"Bootstrap failed: {e}", exc_info=True)
-        return {"status": "error", "detail": str(e)}
 
 
 @app.post("/api/refresh", tags=["Health"])
@@ -134,5 +106,42 @@ def debug_news():
                 for a in articles[:10]
             ]
         }
+    except Exception as e:
+        return {"status": "error", "detail": str(e), "type": type(e).__name__}
+
+
+@app.post("/api/admin/migrate-db", tags=["Admin"])
+def migrate_db():
+    """One-time: add new auth columns to beta_users if they don't exist yet."""
+    from database import engine
+    migrations = [
+        "ALTER TABLE beta_users ADD COLUMN IF NOT EXISTS password_hash TEXT",
+        "ALTER TABLE beta_users ADD COLUMN IF NOT EXISTS trial_ends_at TIMESTAMP",
+        "ALTER TABLE beta_users ADD COLUMN IF NOT EXISTS access_expires_at TIMESTAMP",
+        "ALTER TABLE beta_users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN DEFAULT FALSE",
+        "ALTER TABLE beta_users ADD COLUMN IF NOT EXISTS stripe_customer_id TEXT",
+    ]
+    results = []
+    with engine.connect() as conn:
+        for sql in migrations:
+            try:
+                conn.execute(engine.text(sql) if hasattr(engine, "text") else __import__("sqlalchemy").text(sql))
+                results.append({"sql": sql, "status": "ok"})
+            except Exception as e:
+                results.append({"sql": sql, "status": "error", "detail": str(e)})
+        conn.commit()
+    return {"migrated": len([r for r in results if r["status"] == "ok"]), "results": results}
+
+
+@app.get("/api/debug/db", tags=["Debug"])
+def debug_db():
+    """Debug endpoint exposing the database URL and total signal count."""
+    try:
+        from database import DATABASE_URL, SessionLocal, Signal
+        db = SessionLocal()
+        count = db.query(Signal).count()
+        db.close()
+        masked = DATABASE_URL[:20] + "***" if DATABASE_URL else "not set"
+        return {"DATABASE_URL": masked, "signal_count": count}
     except Exception as e:
         return {"status": "error", "detail": str(e), "type": type(e).__name__}

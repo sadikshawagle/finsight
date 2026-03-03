@@ -5,6 +5,8 @@ import { useSignals }   from "@/hooks/useSignals";
 import { useWatchlist } from "@/hooks/useWatchlist";
 import { useMarkets }   from "@/hooks/useMarkets";
 import { useChartData } from "@/hooks/useChartData";
+import { useAuth }      from "@/hooks/useAuth";
+import { postJSON }     from "@/lib/api";
 
 // ─── AFFILIATE BROKERS ────────────────────────────────────────────────────────
 // TODO: Replace href values with your personal affiliate URLs after signing up
@@ -201,6 +203,23 @@ export default function FinSight() {
   const [tickerInput,   setTickerInput] = useState("");
   const [time,          setTime]        = useState(new Date());
 
+  // Auth
+  const auth = useAuth();
+
+  // Effective plan: prefer logged-in user's plan
+  const effectivePlan = auth.isLoggedIn ? (auth.user?.plan || "FREE") : plan;
+
+  // Login modal state
+  const [showLogin,      setShowLogin]      = useState(false);
+  const [loginStep,      setLoginStep]      = useState("login"); // "login"|"request_otp"|"verify_otp"|"set_password"
+  const [loginEmail,     setLoginEmail]     = useState("");
+  const [loginPassword,  setLoginPassword]  = useState("");
+  const [loginOtp,       setLoginOtp]       = useState("");
+  const [loginNewPw,     setLoginNewPw]     = useState("");
+  const [loginResetToken,setLoginResetToken]= useState("");
+  const [loginError,     setLoginError]     = useState("");
+  const [loginBusy,      setLoginBusy]      = useState(false);
+
   // Beta signup form state
   const [betaStep,      setBetaStep]    = useState("pick");   // "pick" | "form" | "verify" | "done"
   const [betaChoice,    setBetaChoice]  = useState("PRO");
@@ -211,7 +230,7 @@ export default function FinSight() {
   const [betaError,     setBetaError]   = useState("");
 
   // ── Real data hooks ──────────────────────────────────────────────────────
-  const { signals, loading: sigLoading, newId } = useSignals(plan);
+  const { signals, loading: sigLoading, newId } = useSignals(effectivePlan);
   const { watchlist, addTicker, removeTicker }  = useWatchlist();
   const { allMarkets }                           = useMarkets();
   const { chartData }                            = useChartData();
@@ -224,7 +243,7 @@ export default function FinSight() {
 
   const counts  = signals.reduce((a, s) => { a[s.signal] = (a[s.signal] || 0) + 1; return a; }, {});
   const filtered = filter === "ALL" ? signals : signals.filter(s => s.signal === filter);
-  const isLocked = (s) => plan === "FREE" && signals.indexOf(s) >= 3;
+  const isLocked = (s) => effectivePlan === "FREE" && signals.indexOf(s) >= 3;
 
   const avgConf = signals.length
     ? Math.round(signals.reduce((a, s) => a + (s.confidence || 0), 0) / signals.length * 100)
@@ -288,12 +307,65 @@ export default function FinSight() {
       }
       const data = await res.json();
       setPlan(data.plan);
+      if (data.token) auth.saveToken(data.token);
       setBetaStep("done");
     } catch {
       setBetaError("Something went wrong. Please try again.");
     } finally {
       setBetaSubmitting(false);
     }
+  };
+
+  // ── Login handlers ────────────────────────────────────────────────────────
+  const handleLogin = async () => {
+    if (!loginEmail.trim() || !loginPassword.trim()) { setLoginError("Please enter email and password."); return; }
+    setLoginError(""); setLoginBusy(true);
+    try {
+      const data = await postJSON("/api/login", { email: loginEmail.trim(), password: loginPassword });
+      auth.saveToken(data.token);
+      setShowLogin(false);
+    } catch (e) {
+      const detail = e.message.includes("401") ? "Incorrect email or password." : e.message.includes("400") ? "Password not set yet — use Forgot password." : "Something went wrong.";
+      setLoginError(detail);
+    } finally { setLoginBusy(false); }
+  };
+
+  const handleRequestOtp = async () => {
+    if (!loginEmail.trim()) { setLoginError("Please enter your email."); return; }
+    setLoginError(""); setLoginBusy(true);
+    try {
+      await postJSON("/api/login/request-otp", { email: loginEmail.trim() });
+      setLoginStep("verify_otp");
+    } catch { setLoginError("Could not find that email. Please sign up first."); }
+    finally { setLoginBusy(false); }
+  };
+
+  const handleVerifyOtp = async () => {
+    if (!loginOtp.trim()) { setLoginError("Please enter the code."); return; }
+    setLoginError(""); setLoginBusy(true);
+    try {
+      const data = await postJSON("/api/login/verify-otp", { email: loginEmail.trim(), code: loginOtp.trim() });
+      setLoginResetToken(data.reset_token);
+      setLoginStep("set_password");
+    } catch { setLoginError("Incorrect or expired code. Try again."); }
+    finally { setLoginBusy(false); }
+  };
+
+  const handleSetPassword = async () => {
+    if (loginNewPw.length < 8) { setLoginError("Password must be at least 8 characters."); return; }
+    setLoginError(""); setLoginBusy(true);
+    try {
+      const data = await postJSON("/api/login/set-password", { password: loginNewPw, reset_token: loginResetToken });
+      auth.saveToken(data.token);
+      setShowLogin(false);
+    } catch { setLoginError("Something went wrong. Please try again."); }
+    finally { setLoginBusy(false); }
+  };
+
+  const openLogin = () => {
+    setLoginStep("login"); setLoginEmail(""); setLoginPassword(""); setLoginOtp("");
+    setLoginNewPw(""); setLoginResetToken(""); setLoginError("");
+    setShowLogin(true);
   };
 
   const openUpgrade = () => {
@@ -337,19 +409,178 @@ export default function FinSight() {
               ))}
             </div>
             <div
-              onClick={() => plan === "FREE" && openUpgrade()}
+              onClick={() => effectivePlan === "FREE" && openUpgrade()}
               style={{
                 padding: "5px 12px", borderRadius: 6, fontSize: 11, fontWeight: 700,
-                cursor: plan === "FREE" ? "pointer" : "default",
-                background: plan === "FREE" ? "rgba(251,191,36,0.1)" : "rgba(74,222,128,0.1)",
-                border: `1px solid ${plan === "FREE" ? "rgba(251,191,36,0.3)" : "rgba(74,222,128,0.3)"}`,
-                color: plan === "FREE" ? "#fbbf24" : "#4ade80",
+                cursor: effectivePlan === "FREE" ? "pointer" : "default",
+                background: effectivePlan === "FREE" ? "rgba(251,191,36,0.1)" : "rgba(74,222,128,0.1)",
+                border: `1px solid ${effectivePlan === "FREE" ? "rgba(251,191,36,0.3)" : "rgba(74,222,128,0.3)"}`,
+                color: effectivePlan === "FREE" ? "#fbbf24" : "#4ade80",
               }}>
-              {plan === "FREE" ? "⚡ FREE PLAN" : `✦ ${plan} — BETA`}
+              {effectivePlan === "FREE" ? "⚡ FREE PLAN" : `✦ ${effectivePlan}`}
             </div>
+
+            {/* Login / user button */}
+            {auth.isLoggedIn ? (
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <span style={{ fontSize: 11, color: "#8b949e" }}>{auth.user?.name?.split(" ")[0]}</span>
+                <button onClick={auth.logout} style={{ background: "none", border: "1px solid #30363d", color: "#6b7280", padding: "4px 10px", borderRadius: 6, cursor: "pointer", fontSize: 10 }}>
+                  logout
+                </button>
+              </div>
+            ) : (
+              <button onClick={openLogin} style={{ background: "rgba(88,166,255,0.1)", border: "1px solid rgba(88,166,255,0.3)", color: "#58a6ff", padding: "5px 12px", borderRadius: 6, cursor: "pointer", fontSize: 11, fontWeight: 700, fontFamily: "monospace" }}>
+                login
+              </button>
+            )}
           </div>
         </div>
       </div>
+
+      {/* ── Trial countdown banner ── */}
+      {auth.isLoggedIn && auth.trialActive && auth.trialDaysLeft <= 7 && (
+        <div style={{ background: "rgba(251,191,36,0.08)", borderBottom: "1px solid rgba(251,191,36,0.25)", padding: "8px 24px", textAlign: "center" }}>
+          <span style={{ fontSize: 11, color: "#fbbf24" }}>
+            ⏳ Your free trial ends in <strong>{auth.trialDaysLeft} day{auth.trialDaysLeft !== 1 ? "s" : ""}</strong>.
+            After that, subscribe to keep full {auth.user?.plan} access.
+          </span>
+        </div>
+      )}
+
+      {/* ── Trial expired paywall ── */}
+      {auth.isLoggedIn && !auth.hasAccess && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.92)", zIndex: 60, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
+          <div style={{ background: "#0d1117", border: "1px solid #30363d", borderRadius: 16, padding: 36, maxWidth: 460, width: "100%", textAlign: "center" }}>
+            <div style={{ fontSize: 36, marginBottom: 12 }}>📊</div>
+            <div style={{ fontSize: 20, fontWeight: 900, marginBottom: 8 }}>Your 30-day trial has ended</div>
+            <div style={{ fontSize: 13, color: "#8b949e", lineHeight: 1.7, marginBottom: 24 }}>
+              Are you getting value from <span style={{ color: "#4ade80", fontWeight: 700 }}>FinSight {auth.user?.plan}</span>?<br />
+              Subscribe below to keep your full access — or drop back to the free plan.
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 16 }}>
+              <div style={{ background: "rgba(74,222,128,0.08)", border: "1px solid rgba(74,222,128,0.3)", borderRadius: 10, padding: 14 }}>
+                <div style={{ fontSize: 13, fontWeight: 800, color: "#4ade80", marginBottom: 4 }}>PRO</div>
+                <div style={{ fontSize: 22, fontWeight: 900, marginBottom: 4 }}>$8.99<span style={{ fontSize: 11, fontWeight: 400, color: "#6b7280" }}> AUD/mo</span></div>
+                <div style={{ fontSize: 10, color: "#8b949e" }}>50 signals · All markets · Full AI reasoning</div>
+              </div>
+              <div style={{ background: "rgba(74,222,128,0.05)", border: "1px solid rgba(74,222,128,0.2)", borderRadius: 10, padding: 14 }}>
+                <div style={{ fontSize: 13, fontWeight: 800, color: "#22d3ee", marginBottom: 4 }}>ELITE</div>
+                <div style={{ fontSize: 22, fontWeight: 900, marginBottom: 4 }}>$15.99<span style={{ fontSize: 11, fontWeight: 400, color: "#6b7280" }}> AUD/mo</span></div>
+                <div style={{ fontSize: 10, color: "#8b949e" }}>Unlimited · Real-time · M&A analysis</div>
+              </div>
+            </div>
+            <button
+              onClick={async () => {
+                try {
+                  const data = await postJSON("/api/payments/create-checkout", {});
+                  if (data.status === "coming_soon") alert("Subscriptions are coming very soon! We'll email you at " + auth.user?.sub + " when they go live.");
+                } catch { alert("Something went wrong. Please try again."); }
+              }}
+              style={{ width: "100%", background: "linear-gradient(135deg, rgba(74,222,128,0.2), rgba(34,211,238,0.2))", border: "1px solid rgba(74,222,128,0.4)", color: "#4ade80", padding: "12px 0", borderRadius: 8, fontSize: 13, fontWeight: 800, cursor: "pointer", fontFamily: "monospace", marginBottom: 10 }}>
+              Yes, I want to subscribe →
+            </button>
+            <button
+              onClick={auth.logout}
+              style={{ width: "100%", background: "none", border: "1px solid #1f2937", color: "#6b7280", padding: "10px 0", borderRadius: 8, fontSize: 12, cursor: "pointer", fontFamily: "monospace" }}>
+              No thanks — drop to FREE plan
+            </button>
+            <div style={{ fontSize: 10, color: "#374151", marginTop: 12 }}>Not financial advice. Cancel anytime.</div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Login modal ── */}
+      {showLogin && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.85)", zIndex: 50, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
+          <div style={{ background: "#0d1117", border: "1px solid #1f2937", borderRadius: 16, padding: 32, maxWidth: 420, width: "100%", position: "relative" }}>
+            <button onClick={() => setShowLogin(false)} style={{ position: "absolute", top: 16, right: 16, background: "none", border: "none", color: "#6b7280", cursor: "pointer", fontSize: 18 }}>✕</button>
+
+            {loginStep === "login" && (
+              <>
+                <div style={{ textAlign: "center", marginBottom: 24 }}>
+                  <div style={{ fontSize: 20, fontWeight: 900, marginBottom: 6 }}>Welcome back</div>
+                  <div style={{ fontSize: 12, color: "#8b949e" }}>Sign in to your FinSight account</div>
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 16 }}>
+                  <input value={loginEmail} onChange={e => setLoginEmail(e.target.value)} type="email" placeholder="Email address"
+                    style={{ background: "#161b22", border: "1px solid #30363d", borderRadius: 8, padding: "10px 14px", color: "#e6edf3", fontSize: 13, fontFamily: "monospace", outline: "none", width: "100%", boxSizing: "border-box" }} />
+                  <input value={loginPassword} onChange={e => setLoginPassword(e.target.value)} onKeyDown={e => e.key === "Enter" && handleLogin()} type="password" placeholder="Password"
+                    style={{ background: "#161b22", border: "1px solid #30363d", borderRadius: 8, padding: "10px 14px", color: "#e6edf3", fontSize: 13, fontFamily: "monospace", outline: "none", width: "100%", boxSizing: "border-box" }} />
+                  {loginError && <div style={{ fontSize: 11, color: "#f87171" }}>{loginError}</div>}
+                </div>
+                <button onClick={handleLogin} disabled={loginBusy}
+                  style={{ width: "100%", background: "linear-gradient(135deg, rgba(88,166,255,0.2), rgba(34,211,238,0.2))", border: "1px solid rgba(88,166,255,0.4)", color: "#58a6ff", padding: "12px 0", borderRadius: 8, fontSize: 13, fontWeight: 800, cursor: loginBusy ? "not-allowed" : "pointer", fontFamily: "monospace", marginBottom: 10 }}>
+                  {loginBusy ? "Signing in..." : "Sign in →"}
+                </button>
+                <button onClick={() => { setLoginStep("request_otp"); setLoginError(""); }}
+                  style={{ width: "100%", background: "none", border: "none", color: "#4b5563", fontSize: 11, cursor: "pointer", padding: "4px 0" }}>
+                  Forgot password / first time? Get an email code
+                </button>
+                <div style={{ fontSize: 10, color: "#374151", textAlign: "center", marginTop: 10 }}>
+                  No account yet? <span style={{ color: "#58a6ff", cursor: "pointer" }} onClick={() => { setShowLogin(false); openUpgrade(); }}>Sign up free →</span>
+                </div>
+              </>
+            )}
+
+            {loginStep === "request_otp" && (
+              <>
+                <div style={{ textAlign: "center", marginBottom: 24 }}>
+                  <div style={{ fontSize: 20, fontWeight: 900, marginBottom: 6 }}>Reset password</div>
+                  <div style={{ fontSize: 12, color: "#8b949e" }}>We&apos;ll email you a code to set a new password</div>
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 16 }}>
+                  <input value={loginEmail} onChange={e => setLoginEmail(e.target.value)} type="email" placeholder="Your email address"
+                    style={{ background: "#161b22", border: "1px solid #30363d", borderRadius: 8, padding: "10px 14px", color: "#e6edf3", fontSize: 13, fontFamily: "monospace", outline: "none", width: "100%", boxSizing: "border-box" }} />
+                  {loginError && <div style={{ fontSize: 11, color: "#f87171" }}>{loginError}</div>}
+                </div>
+                <button onClick={handleRequestOtp} disabled={loginBusy}
+                  style={{ width: "100%", background: "linear-gradient(135deg, rgba(88,166,255,0.2), rgba(34,211,238,0.2))", border: "1px solid rgba(88,166,255,0.4)", color: "#58a6ff", padding: "12px 0", borderRadius: 8, fontSize: 13, fontWeight: 800, cursor: loginBusy ? "not-allowed" : "pointer", fontFamily: "monospace", marginBottom: 10 }}>
+                  {loginBusy ? "Sending..." : "Send code →"}
+                </button>
+                <button onClick={() => { setLoginStep("login"); setLoginError(""); }}
+                  style={{ width: "100%", background: "none", border: "none", color: "#4b5563", fontSize: 11, cursor: "pointer", padding: "4px 0" }}>← Back to login</button>
+              </>
+            )}
+
+            {loginStep === "verify_otp" && (
+              <>
+                <div style={{ textAlign: "center", marginBottom: 24 }}>
+                  <div style={{ fontSize: 28, marginBottom: 8 }}>📧</div>
+                  <div style={{ fontSize: 20, fontWeight: 900, marginBottom: 6 }}>Check your email</div>
+                  <div style={{ fontSize: 12, color: "#8b949e" }}>6-digit code sent to <span style={{ color: "#4ade80" }}>{loginEmail}</span></div>
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 16 }}>
+                  <input value={loginOtp} onChange={e => setLoginOtp(e.target.value.replace(/\D/g, "").slice(0, 6))} onKeyDown={e => e.key === "Enter" && handleVerifyOtp()} placeholder="Enter 6-digit code" maxLength={6}
+                    style={{ background: "#161b22", border: "1px solid #30363d", borderRadius: 8, padding: "12px 14px", color: "#4ade80", fontSize: 20, fontFamily: "monospace", outline: "none", width: "100%", boxSizing: "border-box", textAlign: "center", letterSpacing: "0.3em" }} />
+                  {loginError && <div style={{ fontSize: 11, color: "#f87171" }}>{loginError}</div>}
+                </div>
+                <button onClick={handleVerifyOtp} disabled={loginBusy || loginOtp.length < 6}
+                  style={{ width: "100%", background: "linear-gradient(135deg, rgba(88,166,255,0.2), rgba(34,211,238,0.2))", border: "1px solid rgba(88,166,255,0.4)", color: "#58a6ff", padding: "12px 0", borderRadius: 8, fontSize: 13, fontWeight: 800, cursor: (loginBusy || loginOtp.length < 6) ? "not-allowed" : "pointer", fontFamily: "monospace" }}>
+                  {loginBusy ? "Verifying..." : "Verify code →"}
+                </button>
+              </>
+            )}
+
+            {loginStep === "set_password" && (
+              <>
+                <div style={{ textAlign: "center", marginBottom: 24 }}>
+                  <div style={{ fontSize: 20, fontWeight: 900, marginBottom: 6 }}>Set your password</div>
+                  <div style={{ fontSize: 12, color: "#8b949e" }}>Choose a password for future logins</div>
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 16 }}>
+                  <input value={loginNewPw} onChange={e => setLoginNewPw(e.target.value)} onKeyDown={e => e.key === "Enter" && handleSetPassword()} type="password" placeholder="New password (min 8 chars)"
+                    style={{ background: "#161b22", border: "1px solid #30363d", borderRadius: 8, padding: "10px 14px", color: "#e6edf3", fontSize: 13, fontFamily: "monospace", outline: "none", width: "100%", boxSizing: "border-box" }} />
+                  {loginError && <div style={{ fontSize: 11, color: "#f87171" }}>{loginError}</div>}
+                </div>
+                <button onClick={handleSetPassword} disabled={loginBusy || loginNewPw.length < 8}
+                  style={{ width: "100%", background: "linear-gradient(135deg, rgba(74,222,128,0.2), rgba(34,211,238,0.2))", border: "1px solid rgba(74,222,128,0.4)", color: "#4ade80", padding: "12px 0", borderRadius: 8, fontSize: 13, fontWeight: 800, cursor: (loginBusy || loginNewPw.length < 8) ? "not-allowed" : "pointer", fontFamily: "monospace" }}>
+                  {loginBusy ? "Setting password..." : "Set password & sign in →"}
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* ── Upgrade modal ── */}
       {showUpgrade && (
@@ -589,7 +820,7 @@ export default function FinSight() {
                 </div>
               ))}
 
-              {plan === "FREE" && (
+              {effectivePlan === "FREE" && (
                 <div onClick={() => openUpgrade()} style={{ textAlign: "center", padding: 20, border: "1px dashed #1f2937", borderRadius: 10, color: "#fbbf24", cursor: "pointer", fontSize: 12 }}>
                   ⚡ Free plan limited to 5 stocks. Upgrade to Pro for 50+
                 </div>
@@ -680,7 +911,7 @@ export default function FinSight() {
           </div>
 
           {/* Upgrade CTA */}
-          {plan === "FREE" && (
+          {effectivePlan === "FREE" && (
             <div onClick={() => openUpgrade()} style={{
               background: "linear-gradient(135deg, rgba(74,222,128,0.08), rgba(34,211,238,0.08))",
               border: "1px solid rgba(74,222,128,0.2)", borderRadius: 12, padding: 16, cursor: "pointer", textAlign: "center",
@@ -689,7 +920,7 @@ export default function FinSight() {
               <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 4, color: "#4ade80" }}>Unlock Pro</div>
               <div style={{ fontSize: 11, color: "#8b949e", marginBottom: 10, lineHeight: 1.5 }}>50 stocks · Hourly alerts · Full AI reasoning</div>
               <div style={{ background: "rgba(74,222,128,0.15)", border: "1px solid rgba(74,222,128,0.3)", color: "#4ade80", padding: "7px 0", borderRadius: 7, fontSize: 11, fontWeight: 700 }}>
-                $19/month →
+                Free during beta →
               </div>
             </div>
           )}

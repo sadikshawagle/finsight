@@ -15,6 +15,9 @@ class Settings(BaseSettings):
     FREE_SIGNAL_LIMIT: int = 3
     FREE_WATCHLIST_LIMIT: int = 5
 
+    JWT_SECRET: str = "change-me-in-production"
+    JWT_EXPIRE_DAYS: int = 7
+
     class Config:
         env_file = ".env"
 

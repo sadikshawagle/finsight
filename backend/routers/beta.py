@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, EmailStr
+from jose import jwt
 from database import get_db, BetaUser, OtpCode
 from config import settings
 
@@ -111,12 +112,34 @@ def beta_verify(payload: BetaVerifyRequest, db: Session = Depends(get_db)):
     if existing:
         existing.plan = otp.plan
         db.commit()
-        return {"status": "ok", "plan": existing.plan, "already_registered": True}
+        token = _issue_token(existing)
+        return {"status": "ok", "plan": existing.plan, "already_registered": True, "token": token}
 
-    user = BetaUser(name=otp.name, email=email, plan=otp.plan, signed_up_at=datetime.utcnow())
+    now  = datetime.utcnow()
+    user = BetaUser(
+        name          = otp.name,
+        email         = email,
+        plan          = otp.plan,
+        signed_up_at  = now,
+        trial_ends_at = now + timedelta(days=30),
+    )
     db.add(user)
     db.commit()
-    return {"status": "ok", "plan": otp.plan, "already_registered": False}
+    token = _issue_token(user)
+    return {"status": "ok", "plan": otp.plan, "already_registered": False, "token": token}
+
+
+def _issue_token(user: BetaUser) -> str:
+    payload = {
+        "sub":               user.email,
+        "name":              user.name,
+        "plan":              user.plan,
+        "trial_ends_at":     user.trial_ends_at.isoformat()     if user.trial_ends_at     else None,
+        "access_expires_at": user.access_expires_at.isoformat() if user.access_expires_at else None,
+        "is_admin":          user.is_admin,
+        "exp":               datetime.utcnow() + timedelta(days=settings.JWT_EXPIRE_DAYS),
+    }
+    return jwt.encode(payload, settings.JWT_SECRET, algorithm="HS256")
 
 
 @router.get("/beta-users")

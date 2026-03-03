@@ -77,11 +77,16 @@ class OtpCode(Base):
 class BetaUser(Base):
     __tablename__ = "beta_users"
 
-    id          = Column(Integer, primary_key=True, index=True)
-    name        = Column(Text, nullable=False)
-    email       = Column(Text, nullable=False, unique=True, index=True)
-    plan        = Column(Text, nullable=False, default="PRO")   # PRO or ELITE
-    signed_up_at = Column(DateTime, default=datetime.utcnow)
+    id                 = Column(Integer, primary_key=True, index=True)
+    name               = Column(Text, nullable=False)
+    email              = Column(Text, nullable=False, unique=True, index=True)
+    plan               = Column(Text, nullable=False, default="PRO")   # PRO or ELITE
+    signed_up_at       = Column(DateTime, default=datetime.utcnow)
+    password_hash      = Column(Text, nullable=True)    # bcrypt hash; null until user sets one
+    trial_ends_at      = Column(DateTime, nullable=True) # signed_up_at + 30 days
+    access_expires_at  = Column(DateTime, nullable=True) # set when user pays; null = no paid access
+    is_admin           = Column(Boolean, default=False)  # bypasses trial/payment checks
+    stripe_customer_id = Column(Text, nullable=True)
 
 
 class ChartSnapshot(Base):
