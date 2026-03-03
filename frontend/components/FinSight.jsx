@@ -221,11 +221,12 @@ export default function FinSight() {
   const [loginBusy,      setLoginBusy]      = useState(false);
 
   // Beta signup form state
-  const [betaStep,      setBetaStep]    = useState("pick");   // "pick" | "form" | "verify" | "done"
+  const [betaStep,      setBetaStep]    = useState("pick");   // "pick" | "form" | "verify" | "set_password" | "done"
   const [betaChoice,    setBetaChoice]  = useState("PRO");
   const [betaName,      setBetaName]    = useState("");
   const [betaEmail,     setBetaEmail]   = useState("");
   const [betaOtp,       setBetaOtp]     = useState("");
+  const [betaPassword,  setBetaPassword]= useState("");
   const [betaSubmitting,setBetaSubmitting] = useState(false);
   const [betaError,     setBetaError]   = useState("");
 
@@ -308,12 +309,24 @@ export default function FinSight() {
       const data = await res.json();
       setPlan(data.plan);
       if (data.token) auth.saveToken(data.token);
-      setBetaStep("done");
+      setBetaPassword("");
+      setBetaStep("set_password");
     } catch {
       setBetaError("Something went wrong. Please try again.");
     } finally {
       setBetaSubmitting(false);
     }
+  };
+
+  const handleBetaSetPassword = async () => {
+    if (betaPassword.length < 8) { setBetaError("Password must be at least 8 characters."); return; }
+    setBetaError(""); setBetaSubmitting(true);
+    try {
+      await postJSON("/api/login/set-password", { password: betaPassword });
+      setBetaStep("done");
+    } catch {
+      setBetaError("Could not save password. You can set it later via Forgot password.");
+    } finally { setBetaSubmitting(false); }
   };
 
   // ── Login handlers ────────────────────────────────────────────────────────
@@ -688,7 +701,39 @@ export default function FinSight() {
               </>
             )}
 
-            {/* ── STEP 4: Success ── */}
+            {/* ── STEP 4: Set password ── */}
+            {betaStep === "set_password" && (
+              <>
+                <div style={{ textAlign: "center", marginBottom: 20 }}>
+                  <div style={{ fontSize: 28, marginBottom: 8 }}>🔐</div>
+                  <div style={{ fontSize: 20, fontWeight: 900, marginBottom: 6 }}>Create your password</div>
+                  <div style={{ fontSize: 12, color: "#8b949e", lineHeight: 1.6 }}>
+                    Set a password so you can log back in anytime.<br />
+                    You&apos;re already signed in — this just saves your credentials.
+                  </div>
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 16 }}>
+                  <input
+                    value={betaPassword}
+                    onChange={e => setBetaPassword(e.target.value)}
+                    onKeyDown={e => e.key === "Enter" && handleBetaSetPassword()}
+                    placeholder="Choose a password (min 8 chars)"
+                    type="password"
+                    style={{ background: "#161b22", border: "1px solid #30363d", borderRadius: 8, padding: "10px 14px", color: "#e6edf3", fontSize: 13, fontFamily: "monospace", outline: "none", width: "100%", boxSizing: "border-box" }}
+                  />
+                  {betaError && <div style={{ fontSize: 11, color: "#f87171" }}>{betaError}</div>}
+                </div>
+                <button
+                  onClick={handleBetaSetPassword}
+                  disabled={betaSubmitting || betaPassword.length < 8}
+                  style={{ width: "100%", background: "linear-gradient(135deg, rgba(74,222,128,0.2), rgba(34,211,238,0.2))", border: "1px solid rgba(74,222,128,0.4)", color: "#4ade80", padding: "12px 0", borderRadius: 8, fontSize: 13, fontWeight: 800, cursor: (betaSubmitting || betaPassword.length < 8) ? "not-allowed" : "pointer", fontFamily: "monospace", letterSpacing: "0.05em" }}>
+                  {betaSubmitting ? "Saving..." : "Save Password & Continue →"}
+                </button>
+                <button onClick={() => { setBetaError(""); setBetaStep("done"); }} style={{ width: "100%", marginTop: 8, background: "none", border: "none", color: "#4b5563", fontSize: 11, cursor: "pointer", padding: "6px 0" }}>Skip for now</button>
+              </>
+            )}
+
+            {/* ── STEP 5: Success ── */}
             {betaStep === "done" && (
               <div style={{ textAlign: "center", padding: "8px 0" }}>
                 <div style={{ fontSize: 40, marginBottom: 12 }}>🎉</div>
