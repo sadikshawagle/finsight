@@ -2,6 +2,7 @@
 Auth router — login, OTP password reset, set-password, /me, admin bootstrap.
 """
 import random
+import hashlib
 import logging
 from datetime import datetime, timedelta
 from typing import Optional
@@ -20,6 +21,11 @@ log    = logging.getLogger(__name__)
 router = APIRouter()
 
 pwd_ctx = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+
+def _prep_pw(password: str) -> str:
+    """SHA-256 the password before bcrypt — avoids bcrypt's 72-byte hard limit."""
+    return hashlib.sha256(password.encode("utf-8")).hexdigest()
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
@@ -96,7 +102,7 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)):
             detail="Password not set yet. Use 'Forgot password' to receive an OTP and set one."
         )
 
-    if not pwd_ctx.verify(payload.password[:72], user.password_hash):
+    if not pwd_ctx.verify(_prep_pw(payload.password), user.password_hash):
         raise HTTPException(status_code=401, detail="Incorrect password.")
 
     return {"status": "ok", "token": _make_token(user), "plan": user.plan}
@@ -189,7 +195,7 @@ def set_password(payload: SetPasswordRequest, db: Session = Depends(get_db),
     if not user:
         raise HTTPException(status_code=404, detail="User not found.")
 
-    user.password_hash = pwd_ctx.hash(payload.password[:72])
+    user.password_hash = pwd_ctx.hash(_prep_pw(payload.password))
     db.commit()
 
     return {"status": "ok", "token": _make_token(user), "message": "Password set. You are now logged in."}
