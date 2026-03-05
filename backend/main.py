@@ -11,7 +11,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from database import init_db
-from routers import signals, markets, prices, watchlist, chart, beta, auth, payments
+from routers import signals, markets, prices, watchlist, chart, beta, auth, payments, portfolio
 
 logging.basicConfig(
     level  = logging.INFO,
@@ -53,7 +53,8 @@ app.include_router(watchlist.router, prefix="/api", tags=["Watchlist"])
 app.include_router(chart.router,     prefix="/api", tags=["Chart"])
 app.include_router(beta.router,      prefix="/api", tags=["Beta"])
 app.include_router(auth.router,      prefix="/api", tags=["Auth"])
-app.include_router(payments.router,  prefix="/api", tags=["Payments"])
+app.include_router(payments.router,   prefix="/api", tags=["Payments"])
+app.include_router(portfolio.router,  prefix="/api", tags=["Portfolio"])
 
 
 @app.get("/health", tags=["Health"])

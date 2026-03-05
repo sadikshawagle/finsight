@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine, Column, Integer, Text, Float, Boolean, DateTime
+from sqlalchemy import create_engine, Column, Integer, Text, Float, Boolean, DateTime, ForeignKey
 from sqlalchemy.orm import declarative_base, sessionmaker
 from datetime import datetime
 import os
@@ -87,6 +87,18 @@ class BetaUser(Base):
     access_expires_at  = Column(DateTime, nullable=True) # set when user pays; null = no paid access
     is_admin           = Column(Boolean, default=False)  # bypasses trial/payment checks
     stripe_customer_id = Column(Text, nullable=True)
+
+
+class PortfolioHolding(Base):
+    __tablename__ = "portfolio_holdings"
+
+    id            = Column(Integer, primary_key=True, index=True)
+    user_id       = Column(Integer, ForeignKey("beta_users.id"), nullable=False, index=True)
+    ticker        = Column(Text, nullable=False)
+    quantity      = Column(Float, nullable=False)
+    avg_buy_price = Column(Float, nullable=False)
+    currency      = Column(Text, default="USD")
+    added_at      = Column(DateTime, default=datetime.utcnow)
 
 
 class ChartSnapshot(Base):

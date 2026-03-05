@@ -18,22 +18,23 @@ function _isExpired(isoString) {
 }
 
 export function useAuth() {
-  const [user, setUser]   = useState(null);
-  const [token, setToken] = useState(null);
+  const [user, setUser]             = useState(null);
+  const [token, setToken]           = useState(null);
+  const [isHydrated, setIsHydrated] = useState(false);
 
   // Load from localStorage on mount
   useEffect(() => {
     const stored = localStorage.getItem(TOKEN_KEY);
-    if (!stored) return;
-    const payload = _decodeJwt(stored);
-    if (!payload) { localStorage.removeItem(TOKEN_KEY); return; }
-    // Check JWT exp
-    if (payload.exp && payload.exp * 1000 < Date.now()) {
-      localStorage.removeItem(TOKEN_KEY);
-      return;
+    if (stored) {
+      const payload = _decodeJwt(stored);
+      if (!payload || (payload.exp && payload.exp * 1000 < Date.now())) {
+        localStorage.removeItem(TOKEN_KEY);
+      } else {
+        setToken(stored);
+        setUser(payload);
+      }
     }
-    setToken(stored);
-    setUser(payload);
+    setIsHydrated(true);  // always fires, whether token found or not
   }, []);
 
   const saveToken = useCallback((newToken) => {
@@ -72,6 +73,7 @@ export function useAuth() {
     user,
     token,
     isLoggedIn,
+    isHydrated,
     hasAccess,
     trialActive,
     trialDaysLeft,

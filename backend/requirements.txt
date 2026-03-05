@@ -17,3 +17,5 @@ resend
 pytz
 python-jose[cryptography]
 passlib[bcrypt]
+scipy
+pandas

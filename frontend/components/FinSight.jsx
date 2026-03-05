@@ -6,6 +6,7 @@ import { useWatchlist } from "@/hooks/useWatchlist";
 import { useMarkets }   from "@/hooks/useMarkets";
 import { useChartData } from "@/hooks/useChartData";
 import { useAuth }      from "@/hooks/useAuth";
+import { usePortfolio } from "@/hooks/usePortfolio";
 import { postJSON }     from "@/lib/api";
 
 // ─── AFFILIATE BROKERS ────────────────────────────────────────────────────────
@@ -193,6 +194,180 @@ function SignalCard({ item, isNew }) {
   );
 }
 
+// ─── ANALYZER RESULTS COMPONENT ───────────────────────────────────────────────
+
+function StatRow({ label, value, color = "#e6edf3" }) {
+  return (
+    <div style={{ display: "flex", justifyContent: "space-between", padding: "6px 10px", background: "#161b22", borderRadius: 6, marginBottom: 4 }}>
+      <span style={{ fontSize: 11, color: "#6b7280" }}>{label}</span>
+      <span style={{ fontSize: 11, fontWeight: 700, color, fontFamily: "monospace" }}>{value}</span>
+    </div>
+  );
+}
+
+function AnalyzerResults({ data }) {
+  const v = data.volatility;
+  const cs = data.crossover_summary;
+  const rs = data.rsi_stats;
+  const t  = data.trend;
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+
+      {/* Summary */}
+      <div style={{ background: "#0d1117", border: "1px solid rgba(88,166,255,0.3)", borderLeft: "3px solid #58a6ff", borderRadius: 10, padding: "14px 16px" }}>
+        <div style={{ fontSize: 10, color: "#58a6ff", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 8 }}>Summary — {data.ticker} ({data.years}yr)</div>
+        <div style={{ fontSize: 12, color: "#e6edf3", lineHeight: 1.75 }}>{data.summary}</div>
+      </div>
+
+      {/* 4-stat strip */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8 }}>
+        {[
+          { label: "Current Price",  value: `$${data.current_price}`,                                                                                       color: "#e6edf3" },
+          { label: "Total Return",   value: `${t.total_return_pct >= 0 ? "+" : ""}${t.total_return_pct}%`,                                                  color: t.total_return_pct >= 0 ? "#4ade80" : "#f87171" },
+          { label: "Ann. Return",    value: `${t.annualized_return_pct >= 0 ? "+" : ""}${t.annualized_return_pct}%/yr`,                                     color: t.annualized_return_pct >= 0 ? "#4ade80" : "#f87171" },
+          { label: "Sharpe Ratio",   value: v.sharpe_ratio ?? "N/A",                                                                                        color: (v.sharpe_ratio ?? 0) >= 1 ? "#4ade80" : (v.sharpe_ratio ?? 0) >= 0 ? "#fbbf24" : "#f87171" },
+        ].map(s => (
+          <div key={s.label} style={{ background: "#0d1117", border: "1px solid #1f2937", borderRadius: 8, padding: "12px 14px" }}>
+            <div style={{ fontSize: 9, color: "#4b5563", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 4 }}>{s.label}</div>
+            <div style={{ fontSize: 15, fontWeight: 700, color: s.color, fontFamily: "monospace" }}>{s.value}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Trend */}
+      <div style={{ background: "#0d1117", border: "1px solid #1f2937", borderRadius: 10, padding: "14px 16px" }}>
+        <div style={{ fontSize: 10, color: "#6b7280", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 10 }}>Trend Analysis (Linear Regression on Price)</div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4 }}>
+          <StatRow label="Direction"               value={t.direction}                              color={t.direction === "UPWARD" ? "#4ade80" : "#f87171"} />
+          <StatRow label="R² (trend fit)"          value={t.r_squared}                             color={t.r_squared > 0.5 ? "#4ade80" : "#fbbf24"} />
+          <StatRow label="p-value"                 value={t.p_value}                               color={t.significant ? "#4ade80" : "#fbbf24"} />
+          <StatRow label="Significant (p < 0.05)?" value={t.significant ? "YES ✓" : "NO"}         color={t.significant ? "#4ade80" : "#fbbf24"} />
+        </div>
+      </div>
+
+      {/* Seasonality */}
+      <div style={{ background: "#0d1117", border: "1px solid #1f2937", borderRadius: 10, padding: "14px 16px" }}>
+        <div style={{ fontSize: 10, color: "#6b7280", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 10 }}>Monthly Seasonality — with t-test Statistical Significance</div>
+        <div style={{ overflowX: "auto" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
+            <thead>
+              <tr>
+                {["Month","Avg Return","Win Rate","Samples","Significant?"].map(h => (
+                  <th key={h} style={{ padding: "6px 8px", textAlign: "left", color: "#4b5563", borderBottom: "1px solid #1f2937", fontWeight: 600, fontSize: 10, textTransform: "uppercase" }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {data.seasonality.map(s => (
+                <tr key={s.month} style={{ borderBottom: "1px solid #161b22" }}>
+                  <td style={{ padding: "6px 8px", color: "#e6edf3", fontWeight: 600 }}>{s.month}</td>
+                  <td style={{ padding: "6px 8px", fontFamily: "monospace", fontWeight: 700, color: s.avg_return == null ? "#4b5563" : s.avg_return >= 0 ? "#4ade80" : "#f87171" }}>
+                    {s.avg_return == null ? "—" : `${s.avg_return >= 0 ? "+" : ""}${s.avg_return}%`}
+                  </td>
+                  <td style={{ padding: "6px 8px", fontFamily: "monospace", color: s.win_rate == null ? "#4b5563" : s.win_rate >= 55 ? "#4ade80" : "#8b949e" }}>
+                    {s.win_rate == null ? "—" : `${s.win_rate}%`}
+                  </td>
+                  <td style={{ padding: "6px 8px", color: "#6b7280" }}>{s.n}</td>
+                  <td style={{ padding: "6px 8px" }}>
+                    {s.significant ? <span style={{ color: "#4ade80", fontSize: 10, fontWeight: 700 }}>✓ YES</span> : <span style={{ color: "#4b5563", fontSize: 10 }}>—</span>}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* MA Crossovers */}
+      <div style={{ background: "#0d1117", border: "1px solid #1f2937", borderRadius: 10, padding: "14px 16px" }}>
+        <div style={{ fontSize: 10, color: "#6b7280", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 10 }}>Moving Average Crossovers (50 / 200-day)</div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4, marginBottom: 12 }}>
+          <StatRow label="Golden Crosses"               value={cs.golden_cross_count}                                                                                    color="#4ade80" />
+          <StatRow label="Death Crosses"                value={cs.death_cross_count}                                                                                     color="#f87171" />
+          <StatRow label="Avg Return After Golden (3mo)" value={cs.golden_avg_3mo_return != null ? `${cs.golden_avg_3mo_return >= 0 ? "+" : ""}${cs.golden_avg_3mo_return}%` : "N/A"} color={(cs.golden_avg_3mo_return ?? 0) >= 0 ? "#4ade80" : "#f87171"} />
+          <StatRow label="Golden Win Rate (3mo)"        value={cs.golden_win_rate_3mo != null ? `${cs.golden_win_rate_3mo}%` : "N/A"}                                   color="#fbbf24" />
+          <StatRow label="Current MA Signal"            value={cs.current_signal}                                                                                        color={cs.current_signal === "BULLISH" ? "#4ade80" : "#f87171"} />
+        </div>
+        {data.crossovers.length > 0 && (
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 10 }}>
+              <thead>
+                <tr>{["Date","Type","Price","3mo","6mo","1yr"].map(h => <th key={h} style={{ padding: "5px 8px", textAlign: "left", color: "#4b5563", borderBottom: "1px solid #1f2937" }}>{h}</th>)}</tr>
+              </thead>
+              <tbody>
+                {data.crossovers.map(c => (
+                  <tr key={c.date} style={{ borderBottom: "1px solid #161b22" }}>
+                    <td style={{ padding: "5px 8px", color: "#8b949e" }}>{c.date}</td>
+                    <td style={{ padding: "5px 8px", fontWeight: 700, color: c.type === "GOLDEN" ? "#4ade80" : "#f87171" }}>{c.type}</td>
+                    <td style={{ padding: "5px 8px", fontFamily: "monospace" }}>${c.price}</td>
+                    {["return_3mo","return_6mo","return_1yr"].map(k => (
+                      <td key={k} style={{ padding: "5px 8px", fontFamily: "monospace", color: c[k] == null ? "#4b5563" : c[k] >= 0 ? "#4ade80" : "#f87171" }}>
+                        {c[k] == null ? "—" : `${c[k] >= 0 ? "+" : ""}${c[k]}%`}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* RSI Stats */}
+      <div style={{ background: "#0d1117", border: "1px solid #1f2937", borderRadius: 10, padding: "14px 16px" }}>
+        <div style={{ fontSize: 10, color: "#6b7280", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 10 }}>RSI Reversal Statistics (with 30-day forward returns)</div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+          <div style={{ background: "#161b22", borderRadius: 8, padding: "10px 12px" }}>
+            <div style={{ fontSize: 10, color: "#4ade80", marginBottom: 8, fontWeight: 700 }}>OVERSOLD — RSI &lt; 30</div>
+            {[
+              ["Times occurred",    rs.oversold.count],
+              ["Avg 30-day return", rs.oversold.avg_return  != null ? `${rs.oversold.avg_return  >= 0 ? "+" : ""}${rs.oversold.avg_return}%`  : "N/A"],
+              ["Win rate",          rs.oversold.win_rate    != null ? `${rs.oversold.win_rate}%`                                               : "N/A"],
+              ["Max gain",          rs.oversold.max_gain    != null ? `+${rs.oversold.max_gain}%`                                              : "N/A"],
+              ["Max loss",          rs.oversold.max_loss    != null ? `${rs.oversold.max_loss}%`                                               : "N/A"],
+            ].map(([l, v]) => (
+              <div key={l} style={{ display: "flex", justifyContent: "space-between", marginBottom: 5 }}>
+                <span style={{ fontSize: 10, color: "#6b7280" }}>{l}</span>
+                <span style={{ fontSize: 10, fontFamily: "monospace", color: "#e6edf3", fontWeight: 600 }}>{v}</span>
+              </div>
+            ))}
+          </div>
+          <div style={{ background: "#161b22", borderRadius: 8, padding: "10px 12px" }}>
+            <div style={{ fontSize: 10, color: "#f87171", marginBottom: 8, fontWeight: 700 }}>OVERBOUGHT — RSI &gt; 70</div>
+            {[
+              ["Times occurred",    rs.overbought.count],
+              ["Avg 30-day return", rs.overbought.avg_return != null ? `${rs.overbought.avg_return >= 0 ? "+" : ""}${rs.overbought.avg_return}%` : "N/A"],
+              ["Win rate",          rs.overbought.win_rate   != null ? `${rs.overbought.win_rate}%`                                              : "N/A"],
+              ["Current RSI",       rs.current_rsi ?? "N/A"],
+            ].map(([l, v]) => (
+              <div key={l} style={{ display: "flex", justifyContent: "space-between", marginBottom: 5 }}>
+                <span style={{ fontSize: 10, color: "#6b7280" }}>{l}</span>
+                <span style={{ fontSize: 10, fontFamily: "monospace", color: "#e6edf3", fontWeight: 600 }}>{v}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Volatility */}
+      <div style={{ background: "#0d1117", border: "1px solid #1f2937", borderRadius: 10, padding: "14px 16px" }}>
+        <div style={{ fontSize: 10, color: "#6b7280", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 10 }}>Volatility Profile</div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4 }}>
+          <StatRow label="Annual Volatility"              value={`${v.annualized_vol}%`}                                                           color="#fbbf24" />
+          <StatRow label="Max Drawdown"                   value={`${v.max_drawdown}%`}                                                             color="#f87171" />
+          <StatRow label={`Best Year (${v.best_year})`}   value={v.best_year_pct  != null ? `+${v.best_year_pct}%`  : "N/A"}                      color="#4ade80" />
+          <StatRow label={`Worst Year (${v.worst_year})`} value={v.worst_year_pct != null ? `${v.worst_year_pct}%`  : "N/A"}                       color="#f87171" />
+        </div>
+      </div>
+
+      <div style={{ fontSize: 10, color: "#374151", padding: "8px 12px", background: "rgba(251,191,36,0.04)", border: "1px solid rgba(251,191,36,0.1)", borderRadius: 6 }}>
+        ⚠ Statistical analysis is based on historical data only. Past patterns do not guarantee future results. Not financial advice.
+      </div>
+    </div>
+  );
+}
+
 // ─── MAIN APP ─────────────────────────────────────────────────────────────────
 
 export default function FinSight() {
@@ -206,8 +381,10 @@ export default function FinSight() {
   // Auth
   const auth = useAuth();
 
-  // Effective plan: prefer logged-in user's plan
-  const effectivePlan = auth.isLoggedIn ? (auth.user?.plan || "FREE") : plan;
+  // Effective plan: wait for auth hydration so the first signal fetch uses the correct plan
+  const effectivePlan = auth.isHydrated
+    ? (auth.isLoggedIn ? (auth.user?.plan || "FREE") : plan)
+    : null;  // null → useSignals skips fetch until auth state is known
 
   // Login modal state
   const [showLogin,      setShowLogin]      = useState(false);
@@ -232,10 +409,37 @@ export default function FinSight() {
   const [betaError,          setBetaError]          = useState("");
 
   // ── Real data hooks ──────────────────────────────────────────────────────
-  const { signals, loading: sigLoading, newId } = useSignals(effectivePlan);
-  const { watchlist, addTicker, removeTicker }  = useWatchlist();
-  const { allMarkets }                           = useMarkets();
-  const { chartData }                            = useChartData();
+  const { signals, loading: sigLoading, newId }               = useSignals(effectivePlan);
+  const { watchlist, addTicker, removeTicker }                = useWatchlist();
+  const { allMarkets }                                        = useMarkets();
+  const { chartData }                                         = useChartData();
+  const { holdings, summary, loading: portLoading, addHolding, removeHolding } = usePortfolio();
+
+  // Portfolio sub-view
+  const [portView, setPortView] = useState("holdings"); // "holdings" | "analyzer" | "optimizer"
+
+  // Portfolio form state
+  const [portTicker,   setPortTicker]   = useState("");
+  const [portQty,      setPortQty]      = useState("");
+  const [portBuyPrice, setPortBuyPrice] = useState("");
+  const [portCurrency, setPortCurrency] = useState("USD");
+  const [portError,    setPortError]    = useState("");
+  const [portBusy,     setPortBusy]     = useState(false);
+
+  // Analyzer state
+  const [analyzerTicker,  setAnalyzerTicker]  = useState("");
+  const [analyzerYears,   setAnalyzerYears]   = useState(5);
+  const [analyzerData,    setAnalyzerData]    = useState(null);
+  const [analyzerLoading, setAnalyzerLoading] = useState(false);
+  const [analyzerError,   setAnalyzerError]   = useState("");
+
+  // Optimizer state
+  const [optTickers, setOptTickers] = useState("");
+  const [optAmount,  setOptAmount]  = useState("");
+  const [optYears,   setOptYears]   = useState(5);
+  const [optData,    setOptData]    = useState(null);
+  const [optLoading, setOptLoading] = useState(false);
+  const [optError,   setOptError]   = useState("");
 
   // Clock
   useEffect(() => {
@@ -412,8 +616,11 @@ export default function FinSight() {
               {time.toLocaleTimeString("en-AU", { hour12: false })} AEST
             </span>
             <div style={{ display: "flex", gap: 2 }}>
-              {["signals", "watchlist", "markets"].map(tab => (
-                <button key={tab} onClick={() => setActiveTab(tab)} style={{
+              {["signals", "watchlist", "markets", "portfolio"].map(tab => (
+                <button key={tab} onClick={() => {
+                  if (tab === "portfolio" && !auth.isLoggedIn) { openLogin(); return; }
+                  setActiveTab(tab);
+                }} style={{
                   background: activeTab === tab ? "#1f2937" : "transparent",
                   border: "none", color: activeTab === tab ? "#e6edf3" : "#6b7280",
                   padding: "6px 12px", borderRadius: 6, cursor: "pointer",
@@ -864,6 +1071,292 @@ export default function FinSight() {
                 <div onClick={() => openUpgrade()} style={{ textAlign: "center", padding: 20, border: "1px dashed #1f2937", borderRadius: 10, color: "#fbbf24", cursor: "pointer", fontSize: 12 }}>
                   ⚡ Free plan limited to 5 stocks. Upgrade to Pro for 50+
                 </div>
+              )}
+            </div>
+          )}
+
+          {/* PORTFOLIO TAB */}
+          {activeTab === "portfolio" && (
+            <div>
+              {!auth.isLoggedIn ? (
+                <div style={{ textAlign: "center", padding: "60px 20px", background: "#0d1117", border: "1px solid #1f2937", borderRadius: 10 }}>
+                  <div style={{ fontSize: 32, marginBottom: 12 }}>📊</div>
+                  <div style={{ fontSize: 14, color: "#e6edf3", marginBottom: 8 }}>Portfolio Intelligence</div>
+                  <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 24 }}>Sign in to track holdings, run deep statistical analysis, and optimize allocations</div>
+                  <button onClick={openLogin} style={{ background: "rgba(88,166,255,0.1)", border: "1px solid rgba(88,166,255,0.3)", color: "#58a6ff", padding: "8px 20px", borderRadius: 8, cursor: "pointer", fontSize: 12, fontFamily: "monospace" }}>
+                    Sign in
+                  </button>
+                </div>
+              ) : (
+                <>
+                  {/* Sub-tab bar */}
+                  <div style={{ display: "flex", gap: 2, marginBottom: 16, background: "#0d1117", border: "1px solid #1f2937", borderRadius: 8, padding: 4, width: "fit-content" }}>
+                    {[
+                      { id: "holdings",  label: "Holdings" },
+                      { id: "analyzer",  label: "Analyzer" },
+                      { id: "optimizer", label: "Optimizer" },
+                    ].map(v => (
+                      <button key={v.id} onClick={() => setPortView(v.id)} style={{
+                        background: portView === v.id ? "#1f2937" : "transparent",
+                        border: "none", color: portView === v.id ? "#e6edf3" : "#6b7280",
+                        padding: "6px 16px", borderRadius: 6, cursor: "pointer",
+                        fontSize: 11, textTransform: "uppercase", letterSpacing: "0.08em", transition: "all 0.2s",
+                      }}>{v.label}</button>
+                    ))}
+                  </div>
+
+                  {/* ── HOLDINGS VIEW ── */}
+                  {portView === "holdings" && (
+                    <>
+                      {summary && (
+                        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10, marginBottom: 16 }}>
+                          {[
+                            { label: "Total Value", value: summary.total_value != null ? `$${summary.total_value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "—", color: "#e6edf3" },
+                            { label: "Total Cost",  value: summary.total_cost  != null ? `$${summary.total_cost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "—", color: "#8b949e" },
+                            { label: "Total P&L",   value: summary.total_pnl   != null ? `${summary.total_pnl >= 0 ? "+" : ""}$${Math.abs(summary.total_pnl).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (${summary.total_pnl_pct >= 0 ? "+" : ""}${summary.total_pnl_pct?.toFixed(1)}%)` : "—", color: summary.total_pnl >= 0 ? "#4ade80" : "#f87171" },
+                          ].map(stat => (
+                            <div key={stat.label} style={{ background: "#0d1117", border: "1px solid #1f2937", borderRadius: 8, padding: "12px 16px" }}>
+                              <div style={{ fontSize: 10, color: "#4b5563", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 6 }}>{stat.label}</div>
+                              <div style={{ fontSize: 16, fontWeight: 700, color: stat.color, fontFamily: "monospace" }}>{stat.value}</div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      <div style={{ background: "#0d1117", border: "1px solid #1f2937", borderRadius: 10, padding: "14px 16px", marginBottom: 16 }}>
+                        <div style={{ fontSize: 11, color: "#8b949e", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 10 }}>Add / Update Holding</div>
+                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                          <input value={portTicker} onChange={e => setPortTicker(e.target.value.toUpperCase())} placeholder="Ticker (e.g. TSLA)" style={{ background: "#161b22", border: "1px solid #30363d", color: "#e6edf3", padding: "7px 10px", borderRadius: 6, fontSize: 12, fontFamily: "monospace", width: 130 }} />
+                          <input value={portQty} onChange={e => setPortQty(e.target.value)} placeholder="Qty" type="number" min="0" step="any" style={{ background: "#161b22", border: "1px solid #30363d", color: "#e6edf3", padding: "7px 10px", borderRadius: 6, fontSize: 12, fontFamily: "monospace", width: 80 }} />
+                          <input value={portBuyPrice} onChange={e => setPortBuyPrice(e.target.value)} placeholder="Avg Buy $" type="number" min="0" step="any" style={{ background: "#161b22", border: "1px solid #30363d", color: "#e6edf3", padding: "7px 10px", borderRadius: 6, fontSize: 12, fontFamily: "monospace", width: 110 }} />
+                          <select value={portCurrency} onChange={e => setPortCurrency(e.target.value)} style={{ background: "#161b22", border: "1px solid #30363d", color: "#e6edf3", padding: "7px 10px", borderRadius: 6, fontSize: 12, fontFamily: "monospace" }}>
+                            <option value="USD">USD</option>
+                            <option value="AUD">AUD</option>
+                          </select>
+                          <button disabled={portBusy} onClick={async () => {
+                            const t = portTicker.trim(); const q = parseFloat(portQty); const p = parseFloat(portBuyPrice);
+                            if (!t || !q || !p || q <= 0 || p <= 0) { setPortError("Enter valid ticker, quantity, and buy price."); return; }
+                            setPortError(""); setPortBusy(true);
+                            try { await addHolding(t, q, p, portCurrency); setPortTicker(""); setPortQty(""); setPortBuyPrice(""); }
+                            catch (e) { setPortError(e?.message || "Failed to add holding."); }
+                            finally { setPortBusy(false); }
+                          }} style={{ background: "rgba(74,222,128,0.1)", border: "1px solid rgba(74,222,128,0.3)", color: "#4ade80", padding: "7px 16px", borderRadius: 6, cursor: portBusy ? "not-allowed" : "pointer", fontSize: 12, fontFamily: "monospace", opacity: portBusy ? 0.6 : 1 }}>
+                            {portBusy ? "..." : "Add"}
+                          </button>
+                        </div>
+                        {portError && <div style={{ fontSize: 11, color: "#f87171", marginTop: 8 }}>{portError}</div>}
+                        {effectivePlan === "FREE" && <div style={{ fontSize: 10, color: "#fbbf24", marginTop: 8 }}>⚡ Free plan: up to 3 holdings — <span onClick={() => openUpgrade()} style={{ cursor: "pointer", textDecoration: "underline" }}>Upgrade to Pro</span> for unlimited</div>}
+                      </div>
+
+                      {portLoading ? (
+                        <div style={{ textAlign: "center", padding: 30, color: "#6b7280", fontSize: 12 }}>Loading holdings…</div>
+                      ) : holdings.length === 0 ? (
+                        <div style={{ textAlign: "center", padding: 30, border: "1px dashed #1f2937", borderRadius: 10, color: "#4b5563", fontSize: 12 }}>No holdings yet. Add your first position above.</div>
+                      ) : (
+                        <div style={{ background: "#0d1117", border: "1px solid #1f2937", borderRadius: 10, overflow: "hidden" }}>
+                          <div style={{ display: "grid", gridTemplateColumns: "1fr 60px 90px 90px 90px 110px 30px", gap: 8, padding: "10px 16px", borderBottom: "1px solid #1f2937", fontSize: 10, color: "#4b5563", textTransform: "uppercase", letterSpacing: "0.08em" }}>
+                            <span>Ticker</span><span>Qty</span><span>Avg Buy</span><span>Current</span><span>Value</span><span>P&amp;L</span><span></span>
+                          </div>
+                          {holdings.map(h => {
+                            const pnlPositive = h.pnl != null && h.pnl >= 0;
+                            const pnlColor = h.pnl == null ? "#6b7280" : pnlPositive ? "#4ade80" : "#f87171";
+                            const curr = h.currency === "AUD" ? "A$" : "$";
+                            return (
+                              <div key={h.id} style={{ display: "grid", gridTemplateColumns: "1fr 60px 90px 90px 90px 110px 30px", gap: 8, padding: "12px 16px", borderBottom: "1px solid #161b22", alignItems: "center" }}>
+                                <span style={{ fontWeight: 700, fontSize: 13, fontFamily: "monospace" }}>{h.ticker}</span>
+                                <span style={{ fontSize: 12, color: "#8b949e" }}>{h.quantity}</span>
+                                <span style={{ fontSize: 12, color: "#8b949e" }}>{curr}{h.avg_buy_price?.toFixed(2)}</span>
+                                <span style={{ fontSize: 12, color: "#e6edf3" }}>{h.current_price != null ? `${curr}${h.current_price.toFixed(2)}` : "—"}</span>
+                                <span style={{ fontSize: 12, color: "#e6edf3" }}>{h.current_value != null ? `${curr}${h.current_value.toLocaleString(undefined, { maximumFractionDigits: 2 })}` : "—"}</span>
+                                <span style={{ fontSize: 12, color: pnlColor, fontWeight: 600 }}>
+                                  {h.pnl != null ? `${pnlPositive ? "+" : ""}${curr}${Math.abs(h.pnl).toFixed(2)} (${h.pnl_pct >= 0 ? "+" : ""}${h.pnl_pct?.toFixed(1)}%)` : "—"}
+                                </span>
+                                <button onClick={() => removeHolding(h.id)} style={{ background: "none", border: "none", color: "#4b5563", cursor: "pointer", fontSize: 14, padding: 0 }} title="Remove">✕</button>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </>
+                  )}
+
+                  {/* ── ANALYZER VIEW ── */}
+                  {portView === "analyzer" && (
+                    <div>
+                      <div style={{ background: "#0d1117", border: "1px solid #1f2937", borderRadius: 10, padding: "14px 16px", marginBottom: 16 }}>
+                        <div style={{ fontSize: 11, color: "#8b949e", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 6 }}>Statistical Stock Analysis</div>
+                        <div style={{ fontSize: 11, color: "#4b5563", marginBottom: 12 }}>
+                          Enter any ticker for a deep analysis: trend regression, monthly seasonality (t-test), MA crossover history, RSI reversal win-rates, and volatility profile — all with statistical proof.
+                        </div>
+                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                          <input
+                            value={analyzerTicker}
+                            onChange={e => setAnalyzerTicker(e.target.value.toUpperCase())}
+                            onKeyDown={e => { if (e.key === "Enter") document.getElementById("analyzeBtn").click(); }}
+                            placeholder="Ticker (AAPL, TSLA, BTC-USD…)"
+                            style={{ background: "#161b22", border: "1px solid #30363d", color: "#e6edf3", padding: "7px 10px", borderRadius: 6, fontSize: 12, fontFamily: "monospace", width: 220 }}
+                          />
+                          <select value={analyzerYears} onChange={e => setAnalyzerYears(parseInt(e.target.value))} style={{ background: "#161b22", border: "1px solid #30363d", color: "#e6edf3", padding: "7px 10px", borderRadius: 6, fontSize: 12, fontFamily: "monospace" }}>
+                            {[3, 5, 7, 10, 15, 20].map(y => <option key={y} value={y}>{y} Years</option>)}
+                          </select>
+                          <button
+                            id="analyzeBtn"
+                            disabled={analyzerLoading}
+                            onClick={async () => {
+                              const t = analyzerTicker.trim();
+                              if (!t) { setAnalyzerError("Enter a ticker."); return; }
+                              setAnalyzerError(""); setAnalyzerLoading(true); setAnalyzerData(null);
+                              try {
+                                const data = await fetchJSON(`/api/portfolio/analyze?ticker=${encodeURIComponent(t)}&years=${analyzerYears}`);
+                                setAnalyzerData(data);
+                              } catch (e) {
+                                setAnalyzerError(e?.message?.includes("404") ? `No data found for ${t}. Check the ticker.` : e?.message?.includes("403") ? "Upgrade to Pro to use the analyzer." : "Analysis failed. Try a valid ticker.");
+                              } finally { setAnalyzerLoading(false); }
+                            }}
+                            style={{ background: "rgba(88,166,255,0.1)", border: "1px solid rgba(88,166,255,0.3)", color: "#58a6ff", padding: "7px 20px", borderRadius: 6, cursor: analyzerLoading ? "not-allowed" : "pointer", fontSize: 12, fontFamily: "monospace", opacity: analyzerLoading ? 0.6 : 1 }}
+                          >
+                            {analyzerLoading ? "Analyzing…" : "Analyze"}
+                          </button>
+                        </div>
+                        {analyzerError && <div style={{ fontSize: 11, color: "#f87171", marginTop: 8 }}>{analyzerError}</div>}
+                        <div style={{ fontSize: 10, color: "#374151", marginTop: 8 }}>⏱ Takes 10–20s — fetching years of price data from Yahoo Finance.</div>
+                      </div>
+
+                      {analyzerLoading && (
+                        <div style={{ textAlign: "center", padding: "40px 20px", color: "#6b7280", fontSize: 12 }}>
+                          <div style={{ fontSize: 24, marginBottom: 12 }}>⏳</div>
+                          Fetching {analyzerYears} years of data and running statistical analysis…
+                        </div>
+                      )}
+
+                      {analyzerData && <AnalyzerResults data={analyzerData} />}
+                    </div>
+                  )}
+
+                  {/* ── OPTIMIZER VIEW ── */}
+                  {portView === "optimizer" && (
+                    <div>
+                      <div style={{ background: "#0d1117", border: "1px solid #1f2937", borderRadius: 10, padding: "14px 16px", marginBottom: 16 }}>
+                        <div style={{ fontSize: 11, color: "#8b949e", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 6 }}>Portfolio Optimizer — Markowitz Mean-Variance</div>
+                        <div style={{ fontSize: 11, color: "#4b5563", marginBottom: 12 }}>
+                          Enter 2–10 tickers and your investment amount. The optimizer finds the allocation that maximises risk-adjusted return (Sharpe ratio) using historical data.
+                        </div>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                          <input
+                            value={optTickers}
+                            onChange={e => setOptTickers(e.target.value.toUpperCase())}
+                            placeholder="Tickers comma-separated: AAPL, MSFT, NVDA, BTC-USD…"
+                            style={{ background: "#161b22", border: "1px solid #30363d", color: "#e6edf3", padding: "8px 12px", borderRadius: 6, fontSize: 12, fontFamily: "monospace", width: "100%" }}
+                          />
+                          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                            <input
+                              value={optAmount}
+                              onChange={e => setOptAmount(e.target.value)}
+                              placeholder="Investment amount ($)"
+                              type="number" min="1"
+                              style={{ background: "#161b22", border: "1px solid #30363d", color: "#e6edf3", padding: "7px 10px", borderRadius: 6, fontSize: 12, fontFamily: "monospace", width: 200 }}
+                            />
+                            <select value={optYears} onChange={e => setOptYears(parseInt(e.target.value))} style={{ background: "#161b22", border: "1px solid #30363d", color: "#e6edf3", padding: "7px 10px", borderRadius: 6, fontSize: 12, fontFamily: "monospace" }}>
+                              {[3, 5, 7, 10].map(y => <option key={y} value={y}>{y}yr history</option>)}
+                            </select>
+                            <button
+                              disabled={optLoading}
+                              onClick={async () => {
+                                const tickers = optTickers.split(",").map(t => t.trim()).filter(Boolean);
+                                const amount  = parseFloat(optAmount);
+                                if (tickers.length < 2) { setOptError("Enter at least 2 tickers, comma-separated."); return; }
+                                if (!amount || amount <= 0) { setOptError("Enter a valid investment amount."); return; }
+                                setOptError(""); setOptLoading(true); setOptData(null);
+                                try {
+                                  const data = await postJSON("/api/portfolio/optimize", { tickers, amount, years: optYears });
+                                  setOptData(data);
+                                } catch (e) {
+                                  setOptError(e?.message?.includes("403") ? "Upgrade to Pro to use the optimizer." : "Optimization failed. Check your tickers and try again.");
+                                } finally { setOptLoading(false); }
+                              }}
+                              style={{ background: "rgba(74,222,128,0.1)", border: "1px solid rgba(74,222,128,0.3)", color: "#4ade80", padding: "7px 20px", borderRadius: 6, cursor: optLoading ? "not-allowed" : "pointer", fontSize: 12, fontFamily: "monospace", opacity: optLoading ? 0.6 : 1 }}
+                            >
+                              {optLoading ? "Optimizing…" : "Optimize"}
+                            </button>
+                          </div>
+                        </div>
+                        {optError && <div style={{ fontSize: 11, color: "#f87171", marginTop: 8 }}>{optError}</div>}
+                        <div style={{ fontSize: 10, color: "#374151", marginTop: 8 }}>⏱ Takes 15–30s — fetching data for all tickers simultaneously.</div>
+                      </div>
+
+                      {optLoading && (
+                        <div style={{ textAlign: "center", padding: "40px 20px", color: "#6b7280", fontSize: 12 }}>
+                          <div style={{ fontSize: 24, marginBottom: 12 }}>⚙️</div>
+                          Fetching {optYears} years of data and running Markowitz optimization…
+                        </div>
+                      )}
+
+                      {optData && (
+                        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                          {/* Portfolio stats */}
+                          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
+                            {[
+                              { label: "Expected Return",     value: `+${optData.portfolio.expected_return_pct}%/yr`,   color: "#4ade80" },
+                              { label: "Expected Volatility", value: `±${optData.portfolio.volatility_pct}%`,           color: "#fbbf24" },
+                              { label: "Sharpe Ratio",        value: optData.portfolio.sharpe_ratio ?? "N/A",           color: (optData.portfolio.sharpe_ratio ?? 0) >= 1 ? "#4ade80" : "#fbbf24" },
+                            ].map(s => (
+                              <div key={s.label} style={{ background: "#0d1117", border: "1px solid #1f2937", borderRadius: 8, padding: "12px 14px" }}>
+                                <div style={{ fontSize: 9, color: "#4b5563", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 4 }}>{s.label}</div>
+                                <div style={{ fontSize: 18, fontWeight: 700, color: s.color, fontFamily: "monospace" }}>{s.value}</div>
+                              </div>
+                            ))}
+                          </div>
+
+                          {/* Expected value range */}
+                          <div style={{ background: "#0d1117", border: "1px solid #1f2937", borderRadius: 10, padding: "14px 16px" }}>
+                            <div style={{ fontSize: 10, color: "#6b7280", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 10 }}>Projected Portfolio Value After 1 Year</div>
+                            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
+                              {[
+                                { label: "Conservative", value: `$${optData.portfolio.expected_value_low.toLocaleString()}`,  desc: "Return − 1σ",  color: "#f87171" },
+                                { label: "Expected",     value: `$${optData.portfolio.expected_value_mid.toLocaleString()}`,  desc: "Avg return",   color: "#4ade80" },
+                                { label: "Optimistic",   value: `$${optData.portfolio.expected_value_high.toLocaleString()}`, desc: "Return + 1σ",  color: "#22d3ee" },
+                              ].map(col => (
+                                <div key={col.label} style={{ background: "#161b22", borderRadius: 8, padding: "10px 12px", textAlign: "center" }}>
+                                  <div style={{ fontSize: 9, color: "#4b5563", marginBottom: 4, textTransform: "uppercase" }}>{col.label}</div>
+                                  <div style={{ fontSize: 16, fontWeight: 800, color: col.color, fontFamily: "monospace" }}>{col.value}</div>
+                                  <div style={{ fontSize: 9, color: "#4b5563", marginTop: 2 }}>{col.desc}</div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+
+                          {/* Allocation table */}
+                          <div style={{ background: "#0d1117", border: "1px solid #1f2937", borderRadius: 10, overflow: "hidden" }}>
+                            <div style={{ padding: "10px 16px", borderBottom: "1px solid #1f2937", fontSize: 10, color: "#6b7280", textTransform: "uppercase", letterSpacing: "0.08em" }}>
+                              Optimal Allocation — maximises Sharpe ratio
+                            </div>
+                            <div style={{ display: "grid", gridTemplateColumns: "70px 1fr 80px 80px 80px 80px 80px", gap: 6, padding: "8px 16px", borderBottom: "1px solid #1f2937", fontSize: 9, color: "#4b5563", textTransform: "uppercase" }}>
+                              <span>Ticker</span><span>Weight</span><span>Amount</span><span>Shares</span><span>Price</span><span>Exp Ret</span><span>Vol</span>
+                            </div>
+                            {optData.allocations.map(a => (
+                              <div key={a.ticker} style={{ display: "grid", gridTemplateColumns: "70px 1fr 80px 80px 80px 80px 80px", gap: 6, padding: "10px 16px", borderBottom: "1px solid #161b22", alignItems: "center" }}>
+                                <span style={{ fontWeight: 700, fontSize: 13, fontFamily: "monospace", color: "#58a6ff" }}>{a.ticker}</span>
+                                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                                  <div style={{ height: 6, width: `${Math.max(a.weight_pct * 2, 4)}px`, maxWidth: 100, background: "#4ade80", borderRadius: 3 }} />
+                                  <span style={{ fontSize: 12, fontWeight: 700, color: "#4ade80", fontFamily: "monospace" }}>{a.weight_pct}%</span>
+                                </div>
+                                <span style={{ fontSize: 11, fontFamily: "monospace" }}>${a.amount.toLocaleString()}</span>
+                                <span style={{ fontSize: 11, color: "#8b949e", fontFamily: "monospace" }}>{a.shares ?? "—"}</span>
+                                <span style={{ fontSize: 11, color: "#8b949e", fontFamily: "monospace" }}>${a.current_price}</span>
+                                <span style={{ fontSize: 11, fontFamily: "monospace", color: a.expected_return_pct >= 0 ? "#4ade80" : "#f87171" }}>{a.expected_return_pct >= 0 ? "+" : ""}{a.expected_return_pct}%</span>
+                                <span style={{ fontSize: 11, color: "#fbbf24", fontFamily: "monospace" }}>±{a.volatility_pct}%</span>
+                              </div>
+                            ))}
+                          </div>
+
+                          <div style={{ fontSize: 10, color: "#374151", padding: "8px 12px", background: "rgba(251,191,36,0.04)", border: "1px solid rgba(251,191,36,0.1)", borderRadius: 6 }}>
+                            ⚠ {optData.note}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </>
               )}
             </div>
           )}

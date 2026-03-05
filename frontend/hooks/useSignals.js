@@ -9,6 +9,7 @@ export function useSignals(plan = "FREE", pollMs = 5 * 60 * 1000) {
   const [newId, setNewId]           = useState(null);
 
   const load = useCallback(async () => {
+    if (!plan) return;   // wait until auth is hydrated and plan is known
     try {
       const data = await fetchJSON(`/api/signals?plan=${plan}&limit=50`);
       setSignals(prev => {
