@@ -1210,7 +1210,7 @@ export default function FinSight() {
                                 const data = await fetchJSON(`/api/portfolio/analyze?ticker=${encodeURIComponent(t)}&years=${analyzerYears}`);
                                 setAnalyzerData(data);
                               } catch (e) {
-                                setAnalyzerError(e?.message?.includes("404") ? `No data found for ${t}. Check the ticker.` : e?.message?.includes("403") ? "Upgrade to Pro to use the analyzer." : "Analysis failed. Try a valid ticker.");
+                                setAnalyzerError(e?.message?.includes("404") ? `No data found for ${t}. Check the ticker.` : e?.message?.includes("403") ? "Upgrade to Pro to use the analyzer." : `Analysis failed (${e?.message || "network error"}). Check console for details.`);
                               } finally { setAnalyzerLoading(false); }
                             }}
                             style={{ background: "rgba(88,166,255,0.1)", border: "1px solid rgba(88,166,255,0.3)", color: "#58a6ff", padding: "7px 20px", borderRadius: 6, cursor: analyzerLoading ? "not-allowed" : "pointer", fontSize: 12, fontFamily: "monospace", opacity: analyzerLoading ? 0.6 : 1 }}
