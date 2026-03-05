@@ -1,25 +1,18 @@
 """
 Portfolio router — holdings CRUD with live P&L, plus statistical analysis and optimization.
 All endpoints require a valid JWT (Bearer token).
+Uses only numpy + pandas (already installed via yfinance) — no scipy needed.
 """
 from __future__ import annotations
 from typing import Optional, List
 import logging
+import math
 
 from datetime import datetime, timedelta
 
 import yfinance as yf
-
-# Heavy scientific imports — kept at module level but guarded so an
-# install failure only breaks portfolio analysis, not the whole app.
-try:
-    import numpy as np
-    import pandas as pd
-    from scipy import stats as scipy_stats
-    from scipy.optimize import minimize
-    _SCIPY_OK = True
-except ImportError:
-    _SCIPY_OK = False
+import numpy as np
+import pandas as pd
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
@@ -50,32 +43,43 @@ class OptimizeRequest(BaseModel):
     years:   Optional[int] = 5
 
 
-# ── Internal helpers ───────────────────────────────────────────────────────────
+# ── Pure-numpy stat helpers (no scipy) ────────────────────────────────────────
 
-def _holding_with_price(h: PortfolioHolding) -> dict:
-    price_data    = fetch_single_price(h.ticker) or {}
-    current_price = price_data.get("price")
-    change_pct    = price_data.get("change_pct")
+def _norm_cdf(x: float) -> float:
+    """Standard normal CDF via Abramowitz & Stegun approximation (error < 7.5e-8)."""
+    t = 1.0 / (1.0 + 0.2316419 * abs(x))
+    poly = t * (0.319381530 + t * (-0.356563782 + t * (1.781477937 + t * (-1.821255978 + t * 1.330274429))))
+    p = 1.0 - (1.0 / math.sqrt(2 * math.pi)) * math.exp(-0.5 * x * x) * poly
+    return p if x >= 0 else 1.0 - p
 
-    cost_basis    = round(h.quantity * h.avg_buy_price, 4)
-    current_value = round(h.quantity * current_price, 4) if current_price else None
-    pnl           = round(current_value - cost_basis, 4) if current_value is not None else None
-    pnl_pct       = round((pnl / cost_basis) * 100, 2) if pnl is not None and cost_basis else None
 
-    return {
-        "id":            h.id,
-        "ticker":        h.ticker,
-        "quantity":      h.quantity,
-        "avg_buy_price": h.avg_buy_price,
-        "currency":      h.currency,
-        "added_at":      h.added_at.isoformat() if h.added_at else None,
-        "current_price": current_price,
-        "change_pct":    change_pct,
-        "current_value": current_value,
-        "cost_basis":    cost_basis,
-        "pnl":           pnl,
-        "pnl_pct":       pnl_pct,
-    }
+def _ttest_pvalue(arr: np.ndarray) -> float:
+    """Two-tailed p-value for H0: mean=0 using normal approximation (fine for n >= 5)."""
+    n = len(arr)
+    if n < 2:
+        return 1.0
+    mean = float(np.mean(arr))
+    std  = float(np.std(arr, ddof=1))
+    if std == 0:
+        return 0.0 if mean != 0 else 1.0
+    t = mean / (std / math.sqrt(n))
+    return 2.0 * (1.0 - _norm_cdf(abs(t)))
+
+
+def _linregress(x: np.ndarray, y: np.ndarray):
+    """OLS linear regression — returns (slope, r_value, p_value)."""
+    n   = len(x)
+    xm  = x.mean();  ym = y.mean()
+    ss_xx = float(np.sum((x - xm) ** 2))
+    ss_yy = float(np.sum((y - ym) ** 2))
+    ss_xy = float(np.sum((x - xm) * (y - ym)))
+    slope = ss_xy / ss_xx if ss_xx else 0.0
+    r     = ss_xy / math.sqrt(ss_xx * ss_yy) if (ss_xx * ss_yy) > 0 else 0.0
+    # t-stat for slope
+    se    = math.sqrt(max((ss_yy - slope * ss_xy) / max(n - 2, 1), 0) / max(ss_xx, 1e-12))
+    t_stat = slope / se if se > 0 else 0.0
+    p_val  = 2.0 * (1.0 - _norm_cdf(abs(t_stat)))
+    return slope, r, p_val
 
 
 def _compute_rsi(prices: pd.Series, period: int = 14) -> pd.Series:
@@ -111,6 +115,32 @@ def _has_full_access(user: BetaUser) -> bool:
 
 
 # ── Holdings endpoints ─────────────────────────────────────────────────────────
+
+def _holding_with_price(h: PortfolioHolding) -> dict:
+    price_data    = fetch_single_price(h.ticker) or {}
+    current_price = price_data.get("price")
+    change_pct    = price_data.get("change_pct")
+
+    cost_basis    = round(h.quantity * h.avg_buy_price, 4)
+    current_value = round(h.quantity * current_price, 4) if current_price else None
+    pnl           = round(current_value - cost_basis, 4) if current_value is not None else None
+    pnl_pct       = round((pnl / cost_basis) * 100, 2) if pnl is not None and cost_basis else None
+
+    return {
+        "id":            h.id,
+        "ticker":        h.ticker,
+        "quantity":      h.quantity,
+        "avg_buy_price": h.avg_buy_price,
+        "currency":      h.currency,
+        "added_at":      h.added_at.isoformat() if h.added_at else None,
+        "current_price": current_price,
+        "change_pct":    change_pct,
+        "current_value": current_value,
+        "cost_basis":    cost_basis,
+        "pnl":           pnl,
+        "pnl_pct":       pnl_pct,
+    }
+
 
 @router.get("/portfolio")
 def get_portfolio(
@@ -215,11 +245,9 @@ def analyze_stock(
     current_user: BetaUser = Depends(_get_current_user),
 ):
     """
-    Deep statistical analysis: trend regression, monthly seasonality (t-test),
+    Deep statistical analysis: trend regression, monthly seasonality,
     MA crossover history, RSI reversal win-rates, and volatility profile.
     """
-    if not _SCIPY_OK:
-        raise HTTPException(status_code=503, detail="Statistical analysis libraries are still installing. Please try again in 1–2 minutes.")
     if not _has_full_access(current_user):
         raise HTTPException(status_code=403, detail="Portfolio analysis requires a Pro or Elite plan.")
 
@@ -234,13 +262,14 @@ def analyze_stock(
         raise HTTPException(status_code=400, detail=f"Failed to fetch {ticker}: {e}")
 
     if len(close) < 60:
-        raise HTTPException(status_code=400, detail=f"Not enough data for {ticker}. Try a smaller date range or a different ticker.")
+        raise HTTPException(status_code=400, detail=f"Not enough data for {ticker}.")
 
     returns_daily = close.pct_change().dropna()
 
-    # ── 1. Trend (linear regression on price) ─────────────────────────────────
+    # ── 1. Trend ──────────────────────────────────────────────────────────────
     x = np.arange(len(close), dtype=float)
-    slope, _intercept, r_value, p_value, _std_err = scipy_stats.linregress(x, close.values.astype(float))
+    y = close.values.astype(float)
+    slope, r_value, p_value = _linregress(x, y)
 
     total_return      = (float(close.iloc[-1]) / float(close.iloc[0]) - 1) * 100
     n_years           = max((close.index[-1] - close.index[0]).days / 365.25, 0.01)
@@ -248,15 +277,14 @@ def analyze_stock(
 
     trend = {
         "direction":             "UPWARD" if slope > 0 else "DOWNWARD",
-        "slope_per_day":         round(float(slope), 4),
-        "r_squared":             round(float(r_value ** 2), 4),
-        "p_value":               round(float(p_value), 6),
+        "r_squared":             round(r_value ** 2, 4),
+        "p_value":               round(p_value, 6),
         "significant":           bool(p_value < 0.05),
         "total_return_pct":      round(total_return, 2),
         "annualized_return_pct": round(annualized_return, 2),
     }
 
-    # ── 2. Monthly seasonality with t-test significance ────────────────────────
+    # ── 2. Monthly seasonality ────────────────────────────────────────────────
     monthly    = close.resample("ME").last().pct_change().dropna() * 100
     monthly_df = monthly.to_frame("ret")
     monthly_df["month"] = monthly_df.index.month
@@ -269,7 +297,7 @@ def analyze_stock(
             continue
         avg_ret  = float(np.mean(rets))
         win_rate = float(np.mean(rets > 0) * 100)
-        _, p_val = scipy_stats.ttest_1samp(rets, 0)
+        p_val    = _ttest_pvalue(rets)
         seasonality.append({
             "month":       MONTHS[m - 1],
             "avg_return":  round(avg_ret, 2),
@@ -278,11 +306,11 @@ def analyze_stock(
             "significant": bool(p_val < 0.10),
         })
 
-    # ── 3. Moving average crossovers (50/200-day) ─────────────────────────────
+    # ── 3. MA Crossovers ──────────────────────────────────────────────────────
     ma50  = close.rolling(50).mean()
     ma200 = close.rolling(200).mean()
 
-    crossovers = []
+    crossovers: List[dict] = []
     prev_above: Optional[bool] = None
     for i in range(200, len(close)):
         above = bool(float(ma50.iloc[i]) > float(ma200.iloc[i]))
@@ -303,8 +331,8 @@ def analyze_stock(
 
     golden_3mo = [c["return_3mo"] for c in crossovers if c["type"] == "GOLDEN" and c["return_3mo"] is not None]
     death_3mo  = [c["return_3mo"] for c in crossovers if c["type"] == "DEATH"  and c["return_3mo"] is not None]
+    above_200  = len(close) >= 200 and float(close.iloc[-1]) > float(ma200.iloc[-1])
 
-    above_200 = len(close) >= 200 and float(close.iloc[-1]) > float(ma200.iloc[-1])
     crossover_summary = {
         "golden_cross_count":    len([c for c in crossovers if c["type"] == "GOLDEN"]),
         "death_cross_count":     len([c for c in crossovers if c["type"] == "DEATH"]),
@@ -315,7 +343,7 @@ def analyze_stock(
         "current_signal":        ("BULLISH" if above_200 else "BEARISH") if len(close) >= 200 else "INSUFFICIENT_DATA",
     }
 
-    # ── 4. RSI reversal stats ─────────────────────────────────────────────────
+    # ── 4. RSI reversals ─────────────────────────────────────────────────────
     rsi = _compute_rsi(close)
 
     current_rsi: Optional[float] = None
@@ -334,7 +362,6 @@ def analyze_stock(
         if np.isnan(rv):
             continue
         rv = float(rv)
-
         if rv < 30 and not in_oversold:
             in_oversold = True
         elif rv > 35 and in_oversold:
@@ -342,7 +369,6 @@ def analyze_stock(
             fi = i + 30
             if fi < len(close):
                 oversold_fwd.append(float((close.iloc[fi] / close.iloc[i] - 1) * 100))
-
         if rv > 70 and not in_overbought:
             in_overbought = True
         elif rv < 65 and in_overbought:
@@ -367,14 +393,14 @@ def analyze_stock(
         },
     }
 
-    # ── 5. Volatility profile ─────────────────────────────────────────────────
+    # ── 5. Volatility ─────────────────────────────────────────────────────────
     ann_vol = float(returns_daily.std() * np.sqrt(252) * 100)
     yearly  = close.resample("YE").last().pct_change().dropna() * 100
 
     max_dd_val: Optional[float] = None
     if len(close) > 1:
-        roll_max   = close.expanding().max()
-        drawdowns  = (close - roll_max) / roll_max * 100
+        roll_max  = close.expanding().max()
+        drawdowns = (close - roll_max) / roll_max * 100
         max_dd_val = round(float(drawdowns.min()), 1)
 
     sharpe_ratio: Optional[float] = None
@@ -383,10 +409,10 @@ def analyze_stock(
 
     volatility = {
         "annualized_vol":  round(ann_vol, 2),
-        "best_year_pct":   round(float(yearly.max()), 1)       if not yearly.empty else None,
-        "best_year":       str(yearly.idxmax().year)           if not yearly.empty else None,
-        "worst_year_pct":  round(float(yearly.min()), 1)       if not yearly.empty else None,
-        "worst_year":      str(yearly.idxmin().year)           if not yearly.empty else None,
+        "best_year_pct":   round(float(yearly.max()), 1) if not yearly.empty else None,
+        "best_year":       str(yearly.idxmax().year)      if not yearly.empty else None,
+        "worst_year_pct":  round(float(yearly.min()), 1) if not yearly.empty else None,
+        "worst_year":      str(yearly.idxmin().year)      if not yearly.empty else None,
         "max_drawdown":    max_dd_val,
         "sharpe_ratio":    sharpe_ratio,
     }
@@ -453,11 +479,9 @@ def optimize_portfolio(
     current_user: BetaUser = Depends(_get_current_user),
 ):
     """
-    Markowitz mean-variance optimization — maximize Sharpe ratio across provided tickers.
-    Returns optimal allocation weights, expected return, volatility, and projected values.
+    Monte Carlo portfolio optimization — find allocation that maximises Sharpe ratio.
+    Uses 5000 random portfolios with numpy (no scipy needed).
     """
-    if not _SCIPY_OK:
-        raise HTTPException(status_code=503, detail="Optimization libraries are still installing. Please try again in 1–2 minutes.")
     if not _has_full_access(current_user):
         raise HTTPException(status_code=403, detail="Portfolio optimization requires a Pro or Elite plan.")
 
@@ -471,7 +495,6 @@ def optimize_portfolio(
 
     years = max(1, min(body.years or 5, 20))
 
-    # Fetch price series for each ticker
     price_map: dict = {}
     for t in tickers:
         try:
@@ -482,7 +505,7 @@ def optimize_portfolio(
             pass
 
     if len(price_map) < 2:
-        raise HTTPException(status_code=400, detail="Not enough valid price data for 2+ tickers. Check your tickers.")
+        raise HTTPException(status_code=400, detail="Not enough valid price data for 2+ tickers.")
 
     valid_tickers = list(price_map.keys())
     data = pd.DataFrame(price_map).dropna()
@@ -491,32 +514,39 @@ def optimize_portfolio(
         raise HTTPException(status_code=400, detail="Not enough overlapping price history across tickers.")
 
     returns = data.pct_change().dropna()
-    mu      = returns.mean() * 252          # annualised expected return vector
-    cov     = returns.cov() * 252           # annualised covariance matrix
+    mu      = returns.mean().values * 252          # annualised expected returns
+    cov     = returns.cov().values * 252           # annualised covariance matrix
     n       = len(valid_tickers)
-    rf      = 0.04                          # 4% risk-free rate
+    rf      = 0.04
 
-    def neg_sharpe(w: np.ndarray) -> float:
+    # Monte Carlo: sample 5000 random portfolios, pick best Sharpe
+    rng          = np.random.default_rng(42)
+    best_sharpe  = -np.inf
+    best_weights = np.ones(n) / n
+
+    for _ in range(5000):
+        w = rng.dirichlet(np.ones(n))
+        # Enforce min 5% / max 50% per asset
+        w = np.clip(w, 0.05, 0.50)
+        w = w / w.sum()
         ret = float(np.dot(w, mu))
-        vol = float(np.sqrt(np.dot(w, np.dot(cov.values, w))))
-        return -(ret - rf) / vol if vol > 0 else 0.0
+        vol = float(np.sqrt(np.dot(w, np.dot(cov, w))))
+        sh  = (ret - rf) / vol if vol > 0 else -np.inf
+        if sh > best_sharpe:
+            best_sharpe  = sh
+            best_weights = w
 
-    x0          = np.ones(n) / n
-    constraints = [{"type": "eq", "fun": lambda w: float(np.sum(w)) - 1.0}]
-    bounds      = [(0.05, 0.50)] * n
-    result      = minimize(neg_sharpe, x0, method="SLSQP", bounds=bounds, constraints=constraints)
-    weights     = result.x if result.success else x0
-
+    weights     = best_weights
     port_return = float(np.dot(weights, mu))
-    port_vol    = float(np.sqrt(np.dot(weights, np.dot(cov.values, weights))))
+    port_vol    = float(np.sqrt(np.dot(weights, np.dot(cov, weights))))
     port_sharpe = round((port_return - rf) / port_vol, 2) if port_vol > 0 else None
 
     allocations = []
     for i, t in enumerate(valid_tickers):
         w      = float(weights[i])
         amount = round(body.amount * w, 2)
-        exp_r  = round(float(mu.get(t, 0)) * 100, 1)
-        vol_t  = round(float(np.sqrt(float(cov.loc[t, t]))) * 100, 1)
+        exp_r  = round(float(mu[i]) * 100, 1)
+        vol_t  = round(float(np.sqrt(float(cov[i, i]))) * 100, 1)
         price  = round(float(price_map[t].iloc[-1]), 2)
         shares = round(amount / price, 4) if price > 0 else None
         allocations.append({
