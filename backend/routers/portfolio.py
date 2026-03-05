@@ -6,13 +6,20 @@ from __future__ import annotations
 from typing import Optional, List
 import logging
 
-import numpy as np
-import pandas as pd
 from datetime import datetime, timedelta
-from scipy import stats as scipy_stats
-from scipy.optimize import minimize
 
 import yfinance as yf
+
+# Heavy scientific imports — kept at module level but guarded so an
+# install failure only breaks portfolio analysis, not the whole app.
+try:
+    import numpy as np
+    import pandas as pd
+    from scipy import stats as scipy_stats
+    from scipy.optimize import minimize
+    _SCIPY_OK = True
+except ImportError:
+    _SCIPY_OK = False
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
@@ -211,6 +218,8 @@ def analyze_stock(
     Deep statistical analysis: trend regression, monthly seasonality (t-test),
     MA crossover history, RSI reversal win-rates, and volatility profile.
     """
+    if not _SCIPY_OK:
+        raise HTTPException(status_code=503, detail="Statistical analysis libraries are still installing. Please try again in 1–2 minutes.")
     if not _has_full_access(current_user):
         raise HTTPException(status_code=403, detail="Portfolio analysis requires a Pro or Elite plan.")
 
@@ -447,6 +456,8 @@ def optimize_portfolio(
     Markowitz mean-variance optimization — maximize Sharpe ratio across provided tickers.
     Returns optimal allocation weights, expected return, volatility, and projected values.
     """
+    if not _SCIPY_OK:
+        raise HTTPException(status_code=503, detail="Optimization libraries are still installing. Please try again in 1–2 minutes.")
     if not _has_full_access(current_user):
         raise HTTPException(status_code=403, detail="Portfolio optimization requires a Pro or Elite plan.")
 
