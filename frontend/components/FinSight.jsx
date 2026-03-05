@@ -7,7 +7,7 @@ import { useMarkets }   from "@/hooks/useMarkets";
 import { useChartData } from "@/hooks/useChartData";
 import { useAuth }      from "@/hooks/useAuth";
 import { usePortfolio } from "@/hooks/usePortfolio";
-import { postJSON }     from "@/lib/api";
+import { fetchJSON, postJSON } from "@/lib/api";
 
 // ─── AFFILIATE BROKERS ────────────────────────────────────────────────────────
 // TODO: Replace href values with your personal affiliate URLs after signing up
